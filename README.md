@@ -1,5 +1,7 @@
 # show-me-html
 
+[简体中文](README.zh-CN.md)
+
 ![Banner reading "Markdown is cheap. Show me HTML." above a Markdown document expanding into a rich HTML artifact dashboard](assets/show-me-html-banner.png)
 
 Create self-contained HTML artifacts when a normal chat answer or Markdown file is not enough.
@@ -91,14 +93,10 @@ External libraries are not required to install this skill. A generated artifact 
 
 This repository includes an English example in both Markdown and HTML, so you can compare the same content as a linear document and as a richer HTML artifact:
 
-- Markdown source: [`examples/deepseek_v4_deep_dive_en.md`](examples/deepseek_v4_deep_dive_en.md)
-- Rendered Markdown on GitHub: [`deepseek_v4_deep_dive_en.md`](https://github.com/hi-zhenyu/show-me-html/blob/main/examples/deepseek_v4_deep_dive_en.md)
-- HTML artifact source: [`examples/deepseek_v4_deep_dive_en.html`](examples/deepseek_v4_deep_dive_en.html)
-- Live HTML artifact on GitHub Pages: [`deepseek_v4_deep_dive_en.html`](https://hi-zhenyu.github.io/show-me-html/examples/deepseek_v4_deep_dive_en.html)
+- Markdown: [`deepseek_v4_deep_dive_en.md`](https://github.com/hi-zhenyu/show-me-html/blob/main/examples/deepseek_v4_deep_dive_en.md)
+- HTML: [`deepseek_v4_deep_dive_en.html`](https://hi-zhenyu.github.io/show-me-html/examples/deepseek_v4_deep_dive_en.html)
 
 The examples are illustrative outputs, not required inputs. They show the expected level of structure: an answer-first opening, navigable sections, visual hierarchy, source notes, and a complete HTML file that can be opened locally.
-
-GitHub Pages is deployed from `main` with the workflow in `.github/workflows/pages.yml`. If you fork this repository, enable Pages with the GitHub Actions source to publish your own live example URL.
 
 ## Repository structure
 
@@ -111,6 +109,7 @@ show-me-html/
   references/
 examples/
 README.md
+README.zh-CN.md
 LICENSE
 .gitignore
 ```
