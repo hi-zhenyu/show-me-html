@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepSeek V4 Technical Report Deep Dive</title>
+  <style>
+    :root {
+      --bg: #f4f2eb;
+      --paper: #fffdf7;
+      --ink: #191b17;
+      --soft-ink: #40443d;
+      --muted: #696f63;
+      --line: #d9d5c8;
+      --lime: #c7ff42;
+      --green: #0f7d59;
+      --blue: #2256b8;
+      --rust: #be5438;
+      --amber: #b98517;
+      --panel: rgba(255, 253, 247, .92);
+      --shadow: 0 24px 70px rgba(33, 35, 28, .12);
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+      --sans: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      --serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(25, 27, 23, .045) 1px, transparent 1px) 0 0 / 40px 40px,
+        linear-gradient(0deg, rgba(25, 27, 23, .035) 1px, transparent 1px) 0 0 / 40px 40px,
+        radial-gradient(circle at 84% 9%, rgba(199, 255, 66, .32), transparent 26rem),
+        radial-gradient(circle at 8% 34%, rgba(34, 86, 184, .08), transparent 22rem),
+        var(--bg);
+      font-family: var(--sans);
+      line-height: 1.62;
+    }
+
+    a {
+      color: inherit;
+      text-decoration-color: rgba(15, 125, 89, .38);
+      text-decoration-thickness: 2px;
+      text-underline-offset: .2em;
+    }
+    a:hover { text-decoration-color: var(--green); }
+    :focus-visible { outline: 3px solid rgba(34, 86, 184, .85); outline-offset: 3px; }
+
+    .skip {
+      position: fixed;
+      top: .65rem;
+      left: .65rem;
+      z-index: 20;
+      transform: translateY(-160%);
+      border-radius: 6px;
+      background: var(--ink);
+      color: white;
+      padding: .5rem .75rem;
+      transition: transform .16s ease;
+    }
+    .skip:focus { transform: translateY(0); }
+
+    .shell { width: min(1240px, calc(100% - 32px)); margin: 0 auto; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(217, 213, 200, .9);
+      background: rgba(244, 242, 235, .92);
+      backdrop-filter: blur(16px);
+    }
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .62rem 0;
+    }
+    .brand {
+      font-family: var(--mono);
+      font-size: .74rem;
+      letter-spacing: .12em;
+      color: var(--muted);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    nav { display: flex; gap: .25rem; overflow-x: auto; scrollbar-width: none; }
+    nav a {
+      display: inline-flex;
+      min-height: 34px;
+      align-items: center;
+      padding: .28rem .62rem;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: .88rem;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    nav a:hover, nav a:focus-visible { background: var(--paper); border-color: var(--line); }
+
+    header.hero { min-height: 88vh; display: grid; align-items: end; padding: 4rem 0 3rem; }
+    h1, h2, h3 { margin: 0; line-height: 1.08; text-wrap: balance; }
+    h1 {
+      max-width: 1060px;
+      font-family: var(--serif);
+      font-size: clamp(3.2rem, 7.6vw, 7.4rem);
+      letter-spacing: 0;
+    }
+    h2 { font-family: var(--serif); font-size: clamp(2.15rem, 4.3vw, 4.4rem); margin-bottom: 1rem; }
+    h3 { font-size: 1.08rem; margin-bottom: .45rem; }
+    p { margin: 0; color: var(--muted); text-wrap: pretty; }
+    code { font-family: var(--mono); }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: .85rem;
+      font-family: var(--mono);
+      font-size: .75rem;
+      letter-spacing: .12em;
+      color: var(--soft-ink);
+      text-transform: uppercase;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 44px;
+      height: 2px;
+      background: var(--lime);
+      box-shadow: 0 0 0 1px rgba(25, 27, 23, .15);
+    }
+    .lede {
+      max-width: 840px;
+      margin-top: 1.1rem;
+      color: #30342e;
+      font-size: clamp(1.08rem, 2.1vw, 1.35rem);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(290px, 390px);
+      gap: 1rem;
+      align-items: stretch;
+      margin-top: 2rem;
+    }
+    .metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+    .metric, .card, .panel, .note, .chart-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+    .metric { min-width: 0; padding: .9rem; }
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: clamp(1.35rem, 3vw, 2.05rem);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric span { display: block; margin-top: .38rem; color: var(--muted); font-size: .84rem; }
+    .verdict {
+      border: 1px solid var(--ink);
+      background: var(--paper);
+      box-shadow: 12px 12px 0 rgba(25, 27, 23, .08);
+      padding: 1.05rem;
+    }
+    .verdict b { display: block; margin-bottom: .55rem; font-size: 1.05rem; }
+
+    main { padding-bottom: 72px; }
+    section { scroll-margin-top: 80px; margin-bottom: 68px; }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(250px, .38fr);
+      gap: 1.4rem;
+      align-items: end;
+      margin-bottom: 1.05rem;
+    }
+    .section-head > p { border-left: 3px solid var(--line); padding-left: 1rem; }
+    .panel { padding: clamp(1rem, 2.8vw, 2rem); box-shadow: var(--shadow); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+    .card {
+      padding: .95rem;
+      min-width: 0;
+      background: linear-gradient(180deg, rgba(255, 253, 247, .98), rgba(250, 248, 239, .9));
+    }
+    .kicker {
+      display: inline-flex;
+      margin-bottom: .55rem;
+      padding: .16rem .46rem;
+      border: 1px solid rgba(15, 125, 89, .28);
+      border-radius: 999px;
+      background: rgba(199, 255, 66, .22);
+      color: #293322;
+      font-family: var(--mono);
+      font-size: .72rem;
+      text-transform: uppercase;
+    }
+
+    .flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .58rem; margin-top: .9rem; }
+    .flow-step {
+      position: relative;
+      min-height: 128px;
+      padding: .85rem;
+      border: 1px solid var(--ink);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+    .flow-step::after {
+      content: "->";
+      position: absolute;
+      right: -.72rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--green);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+    .flow-step:last-child::after { content: ""; }
+    .flow-step b {
+      display: block;
+      margin-bottom: .35rem;
+      font-family: var(--mono);
+      font-size: .78rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .mini-flow { display: grid; gap: .55rem; margin-top: .75rem; }
+    .mini-flow .item {
+      display: grid;
+      grid-template-columns: 116px minmax(0, 1fr);
+      gap: .7rem;
+      align-items: start;
+      padding: .62rem;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 253, 247, .76);
+    }
+    .mini-flow b { font-family: var(--mono); font-size: .78rem; color: var(--ink); }
+
+    .formula-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+    .formula {
+      padding: .95rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #181b16;
+      color: #f4f2eb;
+    }
+    .formula code {
+      display: block;
+      white-space: pre-wrap;
+      color: #f7ffe8;
+      font-family: var(--mono);
+      font-size: .84rem;
+      line-height: 1.48;
+    }
+    .formula p { margin-top: .65rem; color: #cbd3bf; font-size: .88rem; }
+
+    .bars { display: grid; gap: .8rem; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr) 78px;
+      gap: .75rem;
+      align-items: center;
+    }
+    .bar-row span { color: var(--muted); font-size: .9rem; min-width: 0; }
+    .track {
+      height: 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #e9e4d5;
+      overflow: hidden;
+    }
+    .fill {
+      height: 100%;
+      width: var(--value);
+      background: linear-gradient(90deg, var(--green), var(--lime));
+      border-right: 1px solid rgba(25, 27, 23, .45);
+    }
+    .bar-row output {
+      text-align: right;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .86rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stack { display: grid; gap: .75rem; }
+    .stack-row { display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: .7rem; align-items: center; }
+    .stack-label { color: var(--soft-ink); font-size: .9rem; }
+    .stack-bar {
+      display: flex;
+      height: 28px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #e9e4d5;
+    }
+    .seg {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      color: white;
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .seg.win { background: var(--green); }
+    .seg.tie { background: var(--amber); }
+    .seg.lose { background: var(--rust); }
+
+    .table-controls { display: flex; gap: .5rem; flex-wrap: wrap; margin: .2rem 0 1rem; }
+    button {
+      min-height: 38px;
+      padding: .4rem .7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    button:hover { border-color: var(--ink); transform: translateY(-1px); }
+    button[aria-pressed="true"] { background: var(--lime); border-color: var(--ink); }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+    table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: .64rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f0eadc;
+      color: #30342e;
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    tr[data-hidden="true"] { display: none; }
+    .pill {
+      display: inline-flex;
+      padding: .12rem .42rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #f7f3e7;
+      font-family: var(--mono);
+      font-size: .7rem;
+      white-space: nowrap;
+    }
+
+    .chart-card { padding: .9rem; overflow: hidden; background: var(--paper); }
+    svg { display: block; width: 100%; height: auto; }
+    .legend { display: flex; gap: .8rem; flex-wrap: wrap; margin-top: .65rem; color: var(--muted); font-size: .86rem; }
+    .legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .28rem; vertical-align: -1px; }
+    .note { padding: .85rem; border-left: 5px solid var(--rust); background: #fff9f4; }
+    .note p { color: #63443a; }
+    .compact-list { margin: .65rem 0 0; padding: 0; list-style: none; display: grid; gap: .55rem; }
+    .compact-list li { position: relative; padding-left: 1.05rem; color: var(--muted); }
+    .compact-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: .72em;
+      width: .38rem;
+      height: .38rem;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .source-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; }
+    .source-list article { padding: .9rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); min-width: 0; }
+    .source-list code { display: inline-block; margin-bottom: .4rem; color: var(--green); font-family: var(--mono); font-size: .76rem; }
+    .footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--muted); font-size: .9rem; }
+
+    @media (max-width: 980px) {
+      .topbar-inner { align-items: start; flex-direction: column; }
+      .hero-grid, .section-head, .grid-2, .grid-3, .grid-4, .formula-grid, .source-list { grid-template-columns: 1fr; }
+      .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow { grid-template-columns: 1fr; }
+      .flow-step::after { content: "down"; right: 50%; top: auto; bottom: -.9rem; transform: translateX(50%); font-size: .7rem; }
+      .flow-step:last-child::after { content: ""; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 22px, 1240px); }
+      h1 { font-size: 2.75rem; }
+      .metric-strip { grid-template-columns: 1fr; }
+      .bar-row, .stack-row, .mini-flow .item { grid-template-columns: 1fr; gap: .34rem; }
+      .bar-row output { text-align: left; }
+      table { min-width: 760px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand">DeepSeek V4 PDF Deep Dive</div>
+      <nav aria-label="Page navigation">
+        <a href="#overview">Overview</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#algorithms">Algorithms</a>
+        <a href="#data-training">Data/Pretrain</a>
+        <a href="#post-training">Post-training</a>
+        <a href="#infra">Infrastructure</a>
+        <a href="#evaluation">Evaluation</a>
+        <a href="#limits">Caveats</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div class="shell">
+      <div class="eyebrow">2026-06-11 · PDF technical reading</div>
+      <h1><span translate="no">DeepSeek V4</span> Technical Report Deep Dive</h1>
+      <p class="lede">
+        This is not just a release summary. It is a structured reading of the DeepSeek V4 PDF across architecture, algorithms, data, pre-training, post-training, serving systems, and evaluation. The central thesis: V4 tries to make one-million-token context not merely possible, but deployable.
+      </p>
+      <div class="hero-grid">
+        <div class="metric-strip" aria-label="Core numbers">
+          <div class="metric"><strong>1M</strong><span>native context length</span></div>
+          <div class="metric"><strong>1.6T / 49B</strong><span>V4-Pro total / activated params</span></div>
+          <div class="metric"><strong>284B / 13B</strong><span>V4-Flash total / activated params</span></div>
+          <div class="metric"><strong>32T+</strong><span>pre-training token scale</span></div>
+        </div>
+        <aside class="verdict">
+          <b>Reading verdict</b>
+          <p>
+            DeepSeek V4 is best understood as a system-level efficiency project: CSA/HCA/SWA redesign attention, mHC stabilizes residual pathways, Muon supports trillion-scale MoE training, and OPD/QAT/serving infrastructure turn specialist capabilities into a deployable model.
+          </p>
+        </aside>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section id="overview">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">0. Reading map</div>
+          <h2>The report's skeleton</h2>
+        </div>
+        <p>The 58-page report is organized around long-context efficiency, MoE training stability, post-training consolidation, and serving infrastructure. Benchmark tables are important, but they are downstream of that engineering stack.</p>
+      </div>
+      <div class="grid-4">
+        <article class="card"><span class="kicker">Problem</span><h3>One-million-token context is attention-bound</h3><p>Vanilla attention makes FLOPs and KV cache growth the dominant bottleneck at extreme context length.</p></article>
+        <article class="card"><span class="kicker">Architecture</span><h3>Hybrid attention replaces one-size attention</h3><p>CSA retrieves sparse compressed blocks, HCA keeps heavily compressed global memory, and SWA preserves local detail.</p></article>
+        <article class="card"><span class="kicker">Training</span><h3>Muon plus stability engineering</h3><p>Muon updates most modules, while Anticipatory Routing and SwiGLU Clamping handle MoE loss spikes.</p></article>
+        <article class="card"><span class="kicker">Post-train</span><h3>Specialists first, OPD merge later</h3><p>Math, code, agentic, and instruction specialists are trained first, then consolidated through multi-teacher on-policy distillation.</p></article>
+      </div>
+    </section>
+
+    <section id="architecture" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">1. Architecture</div>
+          <h2>The Transformer body remains; the critical paths change</h2>
+        </div>
+        <p>V4 inherits DeepSeekMoE and MTP, then adds mHC, interleaved CSA/HCA attention, Muon, and routing/system changes for long-context efficiency.</p>
+      </div>
+
+      <div class="flow" aria-label="Architecture flow">
+        <div class="flow-step"><b>Input</b><p>Tokens enter an architecture designed to maintain compressible state from the beginning.</p></div>
+        <div class="flow-step"><b>mHC</b><p>Residual pathways are expanded and constrained for stable deep signal propagation.</p></div>
+        <div class="flow-step"><b>SWA</b><p>Recent uncompressed KV entries preserve local fine-grained dependencies.</p></div>
+        <div class="flow-step"><b>CSA/HCA</b><p>Long-range information is split between sparse compressed retrieval and dense heavy compression.</p></div>
+        <div class="flow-step"><b>MoE</b><p>Every block uses MoE; early layers use hash routing; each token activates 6 routed experts.</p></div>
+        <div class="flow-step"><b>MTP</b><p>Multi-token prediction depth remains 1, supporting training signal and serving throughput.</p></div>
+      </div>
+
+      <div class="grid-2" style="margin-top:1rem;">
+        <article class="card">
+          <span class="kicker">V4-Flash</span>
+          <h3>Smaller activated footprint, efficiency-oriented</h3>
+          <div class="mini-flow">
+            <div class="item"><b>Scale</b><p>43 layers, hidden size 4096; 284B total parameters and 13B activated parameters.</p></div>
+            <div class="item"><b>Attention</b><p>First two layers use pure SWA; later layers interleave CSA/HCA. CSA m=4, top-k=512; HCA m'=128; SWA window=128.</p></div>
+            <div class="item"><b>MoE</b><p>1 shared expert plus 256 routed experts; 6 routed experts are activated per token.</p></div>
+          </div>
+        </article>
+        <article class="card">
+          <span class="kicker">V4-Pro</span>
+          <h3>Larger capacity for knowledge and hard tasks</h3>
+          <div class="mini-flow">
+            <div class="item"><b>Scale</b><p>61 layers, hidden size 7168; 1.6T total parameters and 49B activated parameters.</p></div>
+            <div class="item"><b>Attention</b><p>First two layers use HCA; later layers interleave CSA/HCA. CSA m=4, top-k=1024; HCA m'=128; SWA window=128.</p></div>
+            <div class="item"><b>MoE</b><p>1 shared expert plus 384 routed experts; 6 routed experts are activated per token.</p></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="grid-2" style="margin-top:1rem;">
+        <article class="chart-card">
+          <h3>Parameter scale</h3>
+          <div class="bars">
+            <div class="bar-row"><span>V3.2 total</span><div class="track"><div class="fill" style="--value:42%"></div></div><output>671B</output></div>
+            <div class="bar-row"><span>V3.2 activated</span><div class="track"><div class="fill" style="--value:76%"></div></div><output>37B</output></div>
+            <div class="bar-row"><span>V4-Flash total</span><div class="track"><div class="fill" style="--value:18%"></div></div><output>284B</output></div>
+            <div class="bar-row"><span>V4-Flash activated</span><div class="track"><div class="fill" style="--value:27%"></div></div><output>13B</output></div>
+            <div class="bar-row"><span>V4-Pro total</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>1.6T</output></div>
+            <div class="bar-row"><span>V4-Pro activated</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>49B</output></div>
+          </div>
+          <p style="margin-top:.75rem;">Total and activated bars are normalized separately; do not compare their lengths across the two groups.</p>
+        </article>
+        <article class="chart-card">
+          <h3>1M-context efficiency vs V3.2</h3>
+          <div class="bars">
+            <div class="bar-row"><span>V3.2 FLOPs</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>100%</output></div>
+            <div class="bar-row"><span>V4-Pro FLOPs</span><div class="track"><div class="fill" style="--value:27%"></div></div><output>27%</output></div>
+            <div class="bar-row"><span>V4-Flash FLOPs</span><div class="track"><div class="fill" style="--value:10%"></div></div><output>10%</output></div>
+            <div class="bar-row"><span>V3.2 KV cache</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>100%</output></div>
+            <div class="bar-row"><span>V4-Pro KV cache</span><div class="track"><div class="fill" style="--value:10%"></div></div><output>10%</output></div>
+            <div class="bar-row"><span>V4-Flash KV cache</span><div class="track"><div class="fill" style="--value:7%"></div></div><output>7%</output></div>
+          </div>
+          <p style="margin-top:.75rem;">The report also states that KV cache can fall to roughly 2% of a common BF16 GQA8 baseline at 1M context.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="algorithms">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">2. Algorithms and formulas</div>
+          <h2>Why the long context becomes cheaper</h2>
+        </div>
+        <p>The formulas below are rewritten for readability. They keep the core variable relationships while avoiding a direct reproduction of the paper's layout.</p>
+      </div>
+
+      <div class="grid-3">
+        <article class="card"><span class="kicker">CSA</span><h3>Compress, then select sparsely</h3><p>Every m tokens become one compressed KV entry. A lightning indexer selects top-k compressed blocks for each query.</p></article>
+        <article class="card"><span class="kicker">HCA</span><h3>Compress more aggressively</h3><p>Every m' tokens, where m' is much larger than m, become one entry. The model then performs dense MQA over that heavily compressed memory.</p></article>
+        <article class="card"><span class="kicker">SWA</span><h3>Do not compress local detail</h3><p>A sliding-window branch keeps recent uncompressed KV entries so the compressed branches do not break local language modeling.</p></article>
+      </div>
+
+      <div class="formula-grid" style="margin-top:1rem;">
+        <article class="formula"><h3>mHC residual update</h3><code>X_{l+1} = B_l X_l + C_l F_l(A_l X_l)</code><p>Hyper-connections expand the residual stream; mHC constrains the residual mapping so deeper stacks remain numerically stable.</p></article>
+        <article class="formula"><h3>Doubly stochastic constraint</h3><code>B_l in M = { M | M 1 = 1, 1^T M = 1^T, M >= 0 }
+||B_l||_2 <= 1</code><p>Constraining B to the Birkhoff polytope makes the residual transformation non-expansive.</p></article>
+        <article class="formula"><h3>Sinkhorn projection</h3><code>M^(0) = exp(B_tilde_l)
+M^(t) = T_row(T_col(M^(t-1)))
+B_l = M^(t_max), t_max = 20</code><p>Column and row normalization project the raw matrix onto the doubly stochastic manifold.</p></article>
+        <article class="formula"><h3>CSA compressed KV</h3><code>C_a = H W_aKV, C_b = H W_bKV
+Z_a = H W_aZ,  Z_b = H W_bZ
+C_i^comp = sum S_a,j * C_a,j + sum S_b,j * C_b,j</code><p>Two overlapping token windows are weighted and merged into one compressed entry.</p></article>
+        <article class="formula"><h3>CSA top-k sparse selection</h3><code>c_t^Q = h_t W_DQ
+q_t^I = c_t^Q W_IUQ
+I_{t,s} = sum_h w_{t,h}^I ReLU(q_{t,h}^I K_s^IComp)
+C_t^sparse = { C_s^comp | I_{t,s} in Top-k(I_{t,:}) }</code><p>The indexer scores compressed history blocks and keeps only top-k for core attention.</p></article>
+        <article class="formula"><h3>HCA heavy compression</h3><code>C = H W_KV, Z = H W_Z
+S = softmax_row(Z + B)
+C_i^comp = sum_j S_j * C_j</code><p>HCA uses a larger compression rate and skips sparse selection, trading detail for dense global memory.</p></article>
+        <article class="formula"><h3>Attention sink</h3><code>s_{h,i,j} = exp(z_{h,i,j}) /
+            (sum_k exp(z_{h,i,k}) + exp(z'_h))</code><p>The learnable sink lets attention mass be less than one instead of forcing every head to distribute all probability to tokens.</p></article>
+        <article class="formula"><h3>Muon update</h3><code>G_t = grad_W L_t(W_{t-1})
+M_t = mu M_{t-1} + G_t
+O'_t = HybridNewtonSchulz(mu M_t + G_t)
+O_t = O'_t sqrt(max(n,m)) gamma
+W_t = W_{t-1}(1 - eta lambda) - eta O_t</code><p>Most modules use matrix-level Muon updates; embeddings, heads, RMSNorm, and some mHC parameters stay on AdamW.</p></article>
+        <article class="formula"><h3>OPD objective</h3><code>L_OPD(theta) = sum_i w_i KL(pi_theta || pi_Ei)</code><p>The student learns from multiple specialist teachers on trajectories sampled by the student itself.</p></article>
+        <article class="formula"><h3>Communication hiding</h3><code>C / B <= V_comp / V_comm
+For V4-Pro: C / B <= 2d = 6144 FLOPs/Byte</code><p>Expert-parallel communication can be hidden when the compute-to-communication ratio satisfies the threshold.</p></article>
+      </div>
+    </section>
+
+    <section id="data-training" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">3. Data and pre-training</div>
+          <h2>The report discloses data directions, not mixture proportions</h2>
+        </div>
+        <p>The PDF names major data categories and processing strategies, but does not provide exact token shares. This page therefore uses a data map rather than an invented pie chart.</p>
+      </div>
+      <div class="grid-2">
+        <article class="card">
+          <span class="kicker">Data construction</span>
+          <h3>Pre-training data coverage</h3>
+          <ul class="compact-list">
+            <li>Starts from DeepSeek-V3 data and improves diversity, quality, and effective long context.</li>
+            <li>Filters batched auto-generated and templated web content to reduce model-collapse risk.</li>
+            <li>Keeps math and programming corpora as core components; adds agentic data during mid-training.</li>
+            <li>Expands multilingual data for long-tail cultural knowledge.</li>
+            <li>Prioritizes long documents such as scientific papers and technical reports.</li>
+            <li>Maintains a 128K vocabulary and inherits token-splitting and FIM strategies.</li>
+          </ul>
+        </article>
+        <article class="chart-card">
+          <h3>Training tokens and schedules</h3>
+          <div class="bars">
+            <div class="bar-row"><span>Flash tokens</span><div class="track"><div class="fill" style="--value:97%"></div></div><output>32T</output></div>
+            <div class="bar-row"><span>Pro tokens</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>33T</output></div>
+            <div class="bar-row"><span>Flash max batch</span><div class="track"><div class="fill" style="--value:80%"></div></div><output>75.5M</output></div>
+            <div class="bar-row"><span>Pro max batch</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>94.4M</output></div>
+            <div class="bar-row"><span>Flash peak LR</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>2.7e-4</output></div>
+            <div class="bar-row"><span>Pro peak LR</span><div class="track"><div class="fill" style="--value:74%"></div></div><output>2.0e-4</output></div>
+          </div>
+          <p style="margin-top:.75rem;">Sequence length grows from 4K to 16K, 64K, and 1M. Flash uses dense attention for the first 1T tokens, then introduces sparse attention at 64K.</p>
+        </article>
+      </div>
+      <div class="flow" style="margin-top:1rem;" aria-label="Pre-training flow">
+        <div class="flow-step"><b>Corpus</b><p>Web, code, math, multilingual, long-document, and agentic data.</p></div>
+        <div class="flow-step"><b>Pack</b><p>Documents from different sources are packed to reduce truncation.</p></div>
+        <div class="flow-step"><b>Warmup</b><p>Learning rate warms up for 2000 steps; dense attention stabilizes early training.</p></div>
+        <div class="flow-step"><b>Sparse</b><p>CSA indexer is warmed up before sustained sparse-attention training.</p></div>
+        <div class="flow-step"><b>Scale</b><p>Training context is extended progressively to 1M tokens.</p></div>
+        <div class="flow-step"><b>Stabilize</b><p>Anticipatory Routing and SwiGLU Clamping suppress MoE outliers.</p></div>
+      </div>
+      <div class="note" style="margin-top:1rem;"><p><strong>Data caveat:</strong> the report does not publish exact category proportions, deduplication thresholds, contamination tests, or synthetic-data shares.</p></div>
+    </section>
+
+    <section id="post-training">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">4. Post-training</div>
+          <h2>Train specialists first, then consolidate with OPD</h2>
+        </div>
+        <p>The main methodological substitution versus DeepSeek-V3.2 is replacing the mixed RL stage with On-Policy Distillation.</p>
+      </div>
+      <div class="flow" aria-label="Post-training flow">
+        <div class="flow-step"><b>SFT</b><p>Each target domain first receives high-quality supervised fine-tuning.</p></div>
+        <div class="flow-step"><b>GRPO RL</b><p>Math, code, agent, and instruction specialists are optimized with domain rewards.</p></div>
+        <div class="flow-step"><b>GRM</b><p>Hard-to-verify tasks use rubric-guided RL data and a generative reward model.</p></div>
+        <div class="flow-step"><b>Tool schema</b><p>DSML/XML-style tool calls reduce escaping failures and tool-call errors.</p></div>
+        <div class="flow-step"><b>OPD</b><p>More than ten teachers transfer capabilities via full-vocabulary logit distillation.</p></div>
+        <div class="flow-step"><b>QAT</b><p>MoE expert weights and the CSA indexer QK path adapt to FP4 deployment.</p></div>
+      </div>
+      <div class="grid-3" style="margin-top:1rem;">
+        <article class="card"><span class="kicker">Reasoning modes</span><h3>Non-think / High / Max</h3><p>The three modes correspond to different RL settings, length penalties, context windows, and reasoning-token budgets.</p></article>
+        <article class="card"><span class="kicker">Interleaved thinking</span><h3>Persistent reasoning for tools</h3><p>Tool-calling scenarios preserve reasoning across rounds; ordinary chat still discards previous reasoning after a new user message.</p></article>
+        <article class="card"><span class="kicker">Quick instruction</span><h3>Auxiliary tasks as special tokens</h3><p>Search triggering, query generation, authority/domain classification, title generation, and URL reading decisions reuse the same KV cache.</p></article>
+      </div>
+    </section>
+
+    <section id="infra" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">5. Infrastructure</div>
+          <h2>The architecture only pays off with matching systems</h2>
+        </div>
+        <p>The report repeatedly ties model design to training and inference infrastructure. The efficiency claims depend on kernels, caching, scheduling, and deterministic serving behavior.</p>
+      </div>
+      <div class="grid-3">
+        <article class="card"><span class="kicker">MegaMoE</span><h3>Fine-grained expert pipeline</h3><p>Dispatch, Linear-1, SwiGLU/FP8 cast, Linear-2, and Combine are decomposed into waves to overlap communication and computation. The report claims 1.50-1.73x common serving speedups and up to 1.96x in latency-sensitive settings.</p></article>
+        <article class="card"><span class="kicker">TileLang</span><h3>Fused kernels through DSL</h3><p>TileLang reduces overhead from many small ATen operators and makes attention-variant experiments easier.</p></article>
+        <article class="card"><span class="kicker">Determinism</span><h3>Batch-invariant kernel library</h3><p>MoE dispatch/combine and mHC small matrix operations are made deterministic to reduce batch-dependent output drift.</p></article>
+        <article class="card"><span class="kicker">KV cache</span><h3>Heterogeneous cache layout</h3><p>CSA/HCA compressed KV, CSA indexer KV, SWA KV, and unfinished compression tails are managed separately.</p></article>
+        <article class="card"><span class="kicker">On-disk prefix</span><h3>Reusable shared prefixes</h3><p>Compressed KV can be stored on disk; SWA cache uses full, periodic checkpoint, or zero-caching tradeoffs because it is roughly 8x larger.</p></article>
+        <article class="card"><span class="kicker">DSec</span><h3>Agent sandbox platform</h3><p>The report describes an API gateway, host agents, cluster watcher, and 3FS storage for function calls, containers, microVMs, full VMs, and recoverable trajectories.</p></article>
+      </div>
+    </section>
+
+    <section id="evaluation">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">6. Evaluation</div>
+          <h2>Separate base, post-trained, and real-world evaluations</h2>
+        </div>
+        <p>All numbers are reproduced from the PDF's reported results. Many use internal frameworks or internal harnesses, so they are trend evidence rather than independent third-party confirmation.</p>
+      </div>
+
+      <div class="grid-2">
+        <article class="chart-card">
+          <h3>Base model representative scores</h3>
+          <div class="bars">
+            <div class="bar-row"><span>MMLU-Pro V3.2</span><div class="track"><div class="fill" style="--value:65.5%"></div></div><output>65.5</output></div>
+            <div class="bar-row"><span>MMLU-Pro Flash</span><div class="track"><div class="fill" style="--value:68.3%"></div></div><output>68.3</output></div>
+            <div class="bar-row"><span>MMLU-Pro Pro</span><div class="track"><div class="fill" style="--value:73.5%"></div></div><output>73.5</output></div>
+            <div class="bar-row"><span>SimpleQA V3.2</span><div class="track"><div class="fill" style="--value:28.3%"></div></div><output>28.3</output></div>
+            <div class="bar-row"><span>SimpleQA Flash</span><div class="track"><div class="fill" style="--value:30.1%"></div></div><output>30.1</output></div>
+            <div class="bar-row"><span>SimpleQA Pro</span><div class="track"><div class="fill" style="--value:55.2%"></div></div><output>55.2</output></div>
+            <div class="bar-row"><span>LongBench V3.2</span><div class="track"><div class="fill" style="--value:40.2%"></div></div><output>40.2</output></div>
+            <div class="bar-row"><span>LongBench Flash</span><div class="track"><div class="fill" style="--value:44.7%"></div></div><output>44.7</output></div>
+            <div class="bar-row"><span>LongBench Pro</span><div class="track"><div class="fill" style="--value:51.5%"></div></div><output>51.5</output></div>
+          </div>
+        </article>
+        <article class="chart-card">
+          <h3>Real-world task summary</h3>
+          <div class="bars">
+            <div class="bar-row"><span>Functional writing DS win</span><div class="track"><div class="fill" style="--value:62.65%"></div></div><output>62.65%</output></div>
+            <div class="bar-row"><span>Functional writing Gemini win</span><div class="track"><div class="fill" style="--value:34.10%"></div></div><output>34.10%</output></div>
+            <div class="bar-row"><span>Creative instruction DS</span><div class="track"><div class="fill" style="--value:60.03%"></div></div><output>60.03%</output></div>
+            <div class="bar-row"><span>Creative quality DS</span><div class="track"><div class="fill" style="--value:77.48%"></div></div><output>77.48%</output></div>
+            <div class="bar-row"><span>White-collar non-loss</span><div class="track"><div class="fill" style="--value:63%"></div></div><output>63%</output></div>
+            <div class="bar-row"><span>R&D coding pass</span><div class="track"><div class="fill" style="--value:67%"></div></div><output>67%</output></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="panel" style="margin-top:1rem;">
+        <h3>Table 1: Base models under the internal unified framework</h3>
+        <p style="margin-bottom:.75rem;">This table reflects pre-training/base-model capability before the final post-training stage. It is best read as evidence for architecture, data, and pre-training improvements.</p>
+        <div class="table-wrap" role="region" aria-label="DeepSeek base model table" tabindex="0">
+          <table>
+            <thead><tr><th>Benchmark</th><th>Group</th><th>Shots</th><th class="num">V3.2 Base</th><th class="num">V4-Flash Base</th><th class="num">V4-Pro Base</th></tr></thead>
+            <tbody>
+              <tr><td>Activated Params</td><td><span class="pill">Scale</span></td><td>-</td><td class="num">37B</td><td class="num">13B</td><td class="num">49B</td></tr>
+              <tr><td>Total Params</td><td><span class="pill">Scale</span></td><td>-</td><td class="num">671B</td><td class="num">284B</td><td class="num">1.6T</td></tr>
+              <tr><td>AGIEval</td><td><span class="pill">World</span></td><td>0-shot</td><td class="num">80.1</td><td class="num">82.6</td><td class="num">83.1</td></tr>
+              <tr><td>MMLU</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">87.8</td><td class="num">88.7</td><td class="num">90.1</td></tr>
+              <tr><td>MMLU-Redux</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">87.5</td><td class="num">89.4</td><td class="num">90.8</td></tr>
+              <tr><td>MMLU-Pro</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">65.5</td><td class="num">68.3</td><td class="num">73.5</td></tr>
+              <tr><td>MMMLU</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">87.9</td><td class="num">88.8</td><td class="num">90.3</td></tr>
+              <tr><td>C-Eval</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">90.4</td><td class="num">92.1</td><td class="num">93.1</td></tr>
+              <tr><td>CMMLU</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">88.9</td><td class="num">90.4</td><td class="num">90.8</td></tr>
+              <tr><td>MultiLoKo</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">38.7</td><td class="num">42.2</td><td class="num">51.1</td></tr>
+              <tr><td>Simple-QA verified</td><td><span class="pill">World</span></td><td>25-shot</td><td class="num">28.3</td><td class="num">30.1</td><td class="num">55.2</td></tr>
+              <tr><td>SuperGPQA</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">45.0</td><td class="num">46.5</td><td class="num">53.9</td></tr>
+              <tr><td>FACTS Parametric</td><td><span class="pill">World</span></td><td>25-shot</td><td class="num">27.1</td><td class="num">33.9</td><td class="num">62.6</td></tr>
+              <tr><td>TriviaQA</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">83.3</td><td class="num">82.8</td><td class="num">85.6</td></tr>
+              <tr><td>BBH</td><td><span class="pill">Reason</span></td><td>3-shot</td><td class="num">87.6</td><td class="num">86.9</td><td class="num">87.5</td></tr>
+              <tr><td>DROP</td><td><span class="pill">Reason</span></td><td>1-shot</td><td class="num">88.2</td><td class="num">88.6</td><td class="num">88.7</td></tr>
+              <tr><td>HellaSwag</td><td><span class="pill">Reason</span></td><td>0-shot</td><td class="num">86.4</td><td class="num">85.7</td><td class="num">88.0</td></tr>
+              <tr><td>WinoGrande</td><td><span class="pill">Reason</span></td><td>0-shot</td><td class="num">78.9</td><td class="num">79.5</td><td class="num">81.5</td></tr>
+              <tr><td>CLUEWSC</td><td><span class="pill">Reason</span></td><td>5-shot</td><td class="num">83.5</td><td class="num">82.2</td><td class="num">85.2</td></tr>
+              <tr><td>BigCodeBench</td><td><span class="pill">Code</span></td><td>3-shot</td><td class="num">63.9</td><td class="num">56.8</td><td class="num">59.2</td></tr>
+              <tr><td>HumanEval</td><td><span class="pill">Code</span></td><td>0-shot</td><td class="num">62.8</td><td class="num">69.5</td><td class="num">76.8</td></tr>
+              <tr><td>GSM8K</td><td><span class="pill">Math</span></td><td>8-shot</td><td class="num">91.1</td><td class="num">90.8</td><td class="num">92.6</td></tr>
+              <tr><td>MATH</td><td><span class="pill">Math</span></td><td>4-shot</td><td class="num">60.5</td><td class="num">57.4</td><td class="num">64.5</td></tr>
+              <tr><td>MGSM</td><td><span class="pill">Math</span></td><td>8-shot</td><td class="num">81.3</td><td class="num">85.7</td><td class="num">84.4</td></tr>
+              <tr><td>CMath</td><td><span class="pill">Math</span></td><td>3-shot</td><td class="num">92.6</td><td class="num">93.6</td><td class="num">90.9</td></tr>
+              <tr><td>LongBench-V2</td><td><span class="pill">Long</span></td><td>1-shot</td><td class="num">40.2</td><td class="num">44.7</td><td class="num">51.5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem;">
+        <h3>Table 7: DeepSeek V4 modes</h3>
+        <div class="table-controls" aria-label="Benchmark filters">
+          <button type="button" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-filter="kr" aria-pressed="false">Knowledge/Reasoning</button>
+          <button type="button" data-filter="long" aria-pressed="false">Long context</button>
+          <button type="button" data-filter="agent" aria-pressed="false">Agent</button>
+        </div>
+        <div class="table-wrap" role="region" aria-label="DeepSeek V4 mode table" tabindex="0">
+          <table>
+            <thead><tr><th>Benchmark</th><th>Group</th><th class="num">Flash Non</th><th class="num">Flash High</th><th class="num">Flash Max</th><th class="num">Pro Non</th><th class="num">Pro High</th><th class="num">Pro Max</th></tr></thead>
+            <tbody>
+              <tr data-category="kr"><td>MMLU-Pro</td><td><span class="pill">K/R</span></td><td class="num">83.0</td><td class="num">86.4</td><td class="num">86.2</td><td class="num">82.9</td><td class="num">87.1</td><td class="num">87.5</td></tr>
+              <tr data-category="kr"><td>SimpleQA-Verified</td><td><span class="pill">K/R</span></td><td class="num">23.1</td><td class="num">28.9</td><td class="num">34.1</td><td class="num">45.0</td><td class="num">46.2</td><td class="num">57.9</td></tr>
+              <tr data-category="kr"><td>Chinese-SimpleQA</td><td><span class="pill">K/R</span></td><td class="num">71.5</td><td class="num">73.2</td><td class="num">78.9</td><td class="num">75.8</td><td class="num">77.7</td><td class="num">84.4</td></tr>
+              <tr data-category="kr"><td>GPQA Diamond</td><td><span class="pill">K/R</span></td><td class="num">71.2</td><td class="num">87.4</td><td class="num">88.1</td><td class="num">72.9</td><td class="num">89.1</td><td class="num">90.1</td></tr>
+              <tr data-category="kr"><td>HLE</td><td><span class="pill">K/R</span></td><td class="num">8.1</td><td class="num">29.4</td><td class="num">34.8</td><td class="num">7.7</td><td class="num">34.5</td><td class="num">37.7</td></tr>
+              <tr data-category="kr"><td>LiveCodeBench</td><td><span class="pill">Code</span></td><td class="num">55.2</td><td class="num">88.4</td><td class="num">91.6</td><td class="num">56.8</td><td class="num">89.8</td><td class="num">93.5</td></tr>
+              <tr data-category="kr"><td>Codeforces Rating</td><td><span class="pill">Code</span></td><td class="num">-</td><td class="num">2816</td><td class="num">3052</td><td class="num">-</td><td class="num">2919</td><td class="num">3206</td></tr>
+              <tr data-category="kr"><td>HMMT 2026 Feb</td><td><span class="pill">Math</span></td><td class="num">40.8</td><td class="num">91.9</td><td class="num">94.8</td><td class="num">31.7</td><td class="num">94.0</td><td class="num">95.2</td></tr>
+              <tr data-category="kr"><td>IMOAnswerBench</td><td><span class="pill">Math</span></td><td class="num">41.9</td><td class="num">85.1</td><td class="num">88.4</td><td class="num">35.3</td><td class="num">88.0</td><td class="num">89.8</td></tr>
+              <tr data-category="kr"><td>Apex</td><td><span class="pill">Math</span></td><td class="num">1.0</td><td class="num">19.1</td><td class="num">33.0</td><td class="num">0.4</td><td class="num">27.4</td><td class="num">38.3</td></tr>
+              <tr data-category="kr"><td>Apex Shortlist</td><td><span class="pill">Math</span></td><td class="num">9.3</td><td class="num">72.1</td><td class="num">85.7</td><td class="num">9.2</td><td class="num">85.5</td><td class="num">90.2</td></tr>
+              <tr data-category="long"><td>MRCR 1M</td><td><span class="pill">Long</span></td><td class="num">37.5</td><td class="num">76.9</td><td class="num">78.7</td><td class="num">44.7</td><td class="num">83.3</td><td class="num">83.5</td></tr>
+              <tr data-category="long"><td>CorpusQA 1M</td><td><span class="pill">Long</span></td><td class="num">15.5</td><td class="num">59.3</td><td class="num">60.5</td><td class="num">35.6</td><td class="num">56.5</td><td class="num">62.0</td></tr>
+              <tr data-category="agent"><td>Terminal Bench 2.0</td><td><span class="pill">Agent</span></td><td class="num">49.1</td><td class="num">56.6</td><td class="num">56.9</td><td class="num">59.1</td><td class="num">63.3</td><td class="num">67.9</td></tr>
+              <tr data-category="agent"><td>SWE Verified</td><td><span class="pill">Agent</span></td><td class="num">73.7</td><td class="num">78.6</td><td class="num">79.0</td><td class="num">73.6</td><td class="num">79.4</td><td class="num">80.6</td></tr>
+              <tr data-category="agent"><td>SWE Pro</td><td><span class="pill">Agent</span></td><td class="num">49.1</td><td class="num">52.3</td><td class="num">52.6</td><td class="num">52.1</td><td class="num">54.4</td><td class="num">55.4</td></tr>
+              <tr data-category="agent"><td>SWE Multilingual</td><td><span class="pill">Agent</span></td><td class="num">69.7</td><td class="num">70.2</td><td class="num">73.3</td><td class="num">69.8</td><td class="num">74.1</td><td class="num">76.2</td></tr>
+              <tr data-category="agent"><td>BrowseComp</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">53.5</td><td class="num">73.2</td><td class="num">-</td><td class="num">80.4</td><td class="num">83.4</td></tr>
+              <tr data-category="agent"><td>HLE w/ tools</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">40.3</td><td class="num">45.1</td><td class="num">-</td><td class="num">44.7</td><td class="num">48.2</td></tr>
+              <tr data-category="agent"><td>MCPAtlas Public</td><td><span class="pill">Agent</span></td><td class="num">64.0</td><td class="num">67.4</td><td class="num">69.0</td><td class="num">69.4</td><td class="num">74.2</td><td class="num">73.6</td></tr>
+              <tr data-category="agent"><td>GDPval-AA</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">-</td><td class="num">1395</td><td class="num">-</td><td class="num">-</td><td class="num">1554</td></tr>
+              <tr data-category="agent"><td>Toolathlon</td><td><span class="pill">Agent</span></td><td class="num">40.7</td><td class="num">43.5</td><td class="num">47.8</td><td class="num">46.3</td><td class="num">49.0</td><td class="num">51.8</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem;">
+        <h3>Table 6: V4-Pro-Max versus external models</h3>
+        <p style="margin-bottom:.75rem;">This table mixes closed and open models and contains missing cells where external APIs or evaluations were unavailable. Use it for category-level trends rather than a single universal ranking.</p>
+        <div class="table-wrap" role="region" aria-label="External model comparison table" tabindex="0">
+          <table>
+            <thead><tr><th>Benchmark</th><th>Group</th><th class="num">Opus-4.6 Max</th><th class="num">GPT-5.4 xHigh</th><th class="num">Gemini-3.1 High</th><th class="num">K2.6 Thinking</th><th class="num">GLM-5.1 Thinking</th><th class="num">DS-V4-Pro Max</th></tr></thead>
+            <tbody>
+              <tr><td>MMLU-Pro</td><td><span class="pill">K/R</span></td><td class="num">89.1</td><td class="num">87.5</td><td class="num">91.0</td><td class="num">87.1</td><td class="num">86.0</td><td class="num">87.5</td></tr>
+              <tr><td>SimpleQA-Verified</td><td><span class="pill">K/R</span></td><td class="num">46.2</td><td class="num">45.3</td><td class="num">75.6</td><td class="num">36.9</td><td class="num">38.1</td><td class="num">57.9</td></tr>
+              <tr><td>Chinese-SimpleQA</td><td><span class="pill">K/R</span></td><td class="num">76.4</td><td class="num">76.8</td><td class="num">85.9</td><td class="num">75.9</td><td class="num">75.0</td><td class="num">84.4</td></tr>
+              <tr><td>GPQA Diamond</td><td><span class="pill">K/R</span></td><td class="num">91.3</td><td class="num">93.0</td><td class="num">94.3</td><td class="num">90.5</td><td class="num">86.2</td><td class="num">90.1</td></tr>
+              <tr><td>HLE</td><td><span class="pill">K/R</span></td><td class="num">40.0</td><td class="num">39.8</td><td class="num">44.4</td><td class="num">36.4</td><td class="num">34.7</td><td class="num">37.7</td></tr>
+              <tr><td>LiveCodeBench</td><td><span class="pill">Code</span></td><td class="num">88.8</td><td class="num">-</td><td class="num">91.7</td><td class="num">89.6</td><td class="num">-</td><td class="num">93.5</td></tr>
+              <tr><td>Codeforces Rating</td><td><span class="pill">Code</span></td><td class="num">-</td><td class="num">3168</td><td class="num">3052</td><td class="num">-</td><td class="num">-</td><td class="num">3206</td></tr>
+              <tr><td>HMMT 2026 Feb</td><td><span class="pill">Math</span></td><td class="num">96.2</td><td class="num">97.7</td><td class="num">94.7</td><td class="num">92.7</td><td class="num">89.4</td><td class="num">95.2</td></tr>
+              <tr><td>IMOAnswerBench</td><td><span class="pill">Math</span></td><td class="num">75.3</td><td class="num">91.4</td><td class="num">81.0</td><td class="num">86.0</td><td class="num">83.8</td><td class="num">89.8</td></tr>
+              <tr><td>Apex</td><td><span class="pill">Math</span></td><td class="num">34.5</td><td class="num">54.1</td><td class="num">60.9</td><td class="num">24.0</td><td class="num">11.5</td><td class="num">38.3</td></tr>
+              <tr><td>Apex Shortlist</td><td><span class="pill">Math</span></td><td class="num">85.9</td><td class="num">78.1</td><td class="num">89.1</td><td class="num">75.5</td><td class="num">72.4</td><td class="num">90.2</td></tr>
+              <tr><td>MRCR 1M</td><td><span class="pill">Long</span></td><td class="num">92.9</td><td class="num">-</td><td class="num">76.3</td><td class="num">-</td><td class="num">-</td><td class="num">83.5</td></tr>
+              <tr><td>CorpusQA 1M</td><td><span class="pill">Long</span></td><td class="num">71.7</td><td class="num">-</td><td class="num">53.8</td><td class="num">-</td><td class="num">-</td><td class="num">62.0</td></tr>
+              <tr><td>Terminal Bench 2.0</td><td><span class="pill">Agent</span></td><td class="num">65.4</td><td class="num">75.1</td><td class="num">68.5</td><td class="num">66.7</td><td class="num">63.5</td><td class="num">67.9</td></tr>
+              <tr><td>SWE Verified</td><td><span class="pill">Agent</span></td><td class="num">80.8</td><td class="num">-</td><td class="num">80.6</td><td class="num">80.2</td><td class="num">-</td><td class="num">80.6</td></tr>
+              <tr><td>SWE Pro</td><td><span class="pill">Agent</span></td><td class="num">57.3</td><td class="num">57.7</td><td class="num">54.2</td><td class="num">58.6</td><td class="num">58.4</td><td class="num">55.4</td></tr>
+              <tr><td>SWE Multilingual</td><td><span class="pill">Agent</span></td><td class="num">77.5</td><td class="num">-</td><td class="num">-</td><td class="num">76.7</td><td class="num">73.3</td><td class="num">76.2</td></tr>
+              <tr><td>BrowseComp</td><td><span class="pill">Agent</span></td><td class="num">83.7</td><td class="num">82.7</td><td class="num">85.9</td><td class="num">83.2</td><td class="num">79.3</td><td class="num">83.4</td></tr>
+              <tr><td>HLE w/ tools</td><td><span class="pill">Agent</span></td><td class="num">53.1</td><td class="num">52.0</td><td class="num">51.6</td><td class="num">54.0</td><td class="num">50.4</td><td class="num">48.2</td></tr>
+              <tr><td>GDPval-AA Elo</td><td><span class="pill">Agent</span></td><td class="num">1619</td><td class="num">1674</td><td class="num">1314</td><td class="num">1482</td><td class="num">1535</td><td class="num">1554</td></tr>
+              <tr><td>MCPAtlas Public</td><td><span class="pill">Agent</span></td><td class="num">73.8</td><td class="num">67.2</td><td class="num">69.2</td><td class="num">66.6</td><td class="num">71.8</td><td class="num">73.6</td></tr>
+              <tr><td>Toolathlon</td><td><span class="pill">Agent</span></td><td class="num">47.2</td><td class="num">54.6</td><td class="num">48.8</td><td class="num">50.0</td><td class="num">40.7</td><td class="num">51.8</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:1rem;">
+        <article class="chart-card">
+          <h3>Agentic Search vs RAG</h3>
+          <div class="stack">
+            <div class="stack-row"><span class="stack-label">Easy objective</span><div class="stack-bar"><span class="seg win" style="width:56.1%">56.1</span><span class="seg tie" style="width:21.9%">21.9</span><span class="seg lose" style="width:21.9%">21.9</span></div></div>
+            <div class="stack-row"><span class="stack-label">Easy subjective</span><div class="stack-bar"><span class="seg win" style="width:61.7%">61.7</span><span class="seg tie" style="width:20.9%">20.9</span><span class="seg lose" style="width:17.4%">17.4</span></div></div>
+            <div class="stack-row"><span class="stack-label">Hard objective</span><div class="stack-bar"><span class="seg win" style="width:60.7%">60.7</span><span class="seg tie" style="width:19.6%">19.6</span><span class="seg lose" style="width:19.6%">19.6</span></div></div>
+            <div class="stack-row"><span class="stack-label">Hard subjective</span><div class="stack-bar"><span class="seg win" style="width:68.5%">68.5</span><span class="seg tie" style="width:16.8%">16.8</span><span class="seg lose" style="width:14.7%">14.7</span></div></div>
+            <div class="stack-row"><span class="stack-label">Total</span><div class="stack-bar"><span class="seg win" style="width:61.7%">61.7</span><span class="seg tie" style="width:20.0%">20.0</span><span class="seg lose" style="width:18.3%">18.3</span></div></div>
+          </div>
+          <div class="legend"><span><i style="background:#0f7d59"></i>Agent win</span><span><i style="background:#b98517"></i>Tie</span><span><i style="background:#be5438"></i>RAG win</span></div>
+          <p style="margin-top:.65rem;">Mean cost: Agentic Search uses 16.2 tool calls, 13,649 prefill tokens, and 1,526 output tokens; RAG uses 10,453 prefill and 1,308 output tokens.</p>
+        </article>
+        <article class="chart-card">
+          <h3>R&D Coding Benchmark pass rate</h3>
+          <div class="bars">
+            <div class="bar-row"><span>Haiku 4.5</span><div class="track"><div class="fill" style="--value:13%"></div></div><output>13%</output></div>
+            <div class="bar-row"><span>Sonnet 4.5</span><div class="track"><div class="fill" style="--value:47%"></div></div><output>47%</output></div>
+            <div class="bar-row"><span>DeepSeek V4 Pro Max</span><div class="track"><div class="fill" style="--value:67%"></div></div><output>67%</output></div>
+            <div class="bar-row"><span>Opus 4.5</span><div class="track"><div class="fill" style="--value:70%"></div></div><output>70%</output></div>
+            <div class="bar-row"><span>Opus 4.5 Thinking</span><div class="track"><div class="fill" style="--value:73%"></div></div><output>73%</output></div>
+            <div class="bar-row"><span>Opus 4.6 Thinking</span><div class="track"><div class="fill" style="--value:80%"></div></div><output>80%</output></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="limits" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">7. Caveats</div>
+          <h2>How to read the claims skeptically</h2>
+        </div>
+        <p>The report is information-rich, but it is still a preview technical report rather than a third-party reproduced study.</p>
+      </div>
+      <div class="grid-3">
+        <article class="card"><span class="kicker">Architecture risk</span><h3>Complex design stack</h3><p>The authors acknowledge that many techniques remain in the architecture to reach extreme long-context efficiency.</p></article>
+        <article class="card"><span class="kicker">Stability</span><h3>Some fixes lack full theory</h3><p>Anticipatory Routing and SwiGLU Clamping work empirically, but the underlying mechanisms remain open.</p></article>
+        <article class="card"><span class="kicker">Evaluation</span><h3>Many numbers are internal</h3><p>Table 1 uses an internal unified framework, while agent/search/white-collar/coding-agent evaluations rely heavily on internal harnesses or human evaluation.</p></article>
+        <article class="card"><span class="kicker">Data</span><h3>Mixture details are not public</h3><p>The report names categories and processing strategies, but not exact data shares or contamination tests.</p></article>
+        <article class="card"><span class="kicker">Serving</span><h3>Real cost depends on deployment</h3><p>Lower FLOPs and KV cache do not directly determine user-facing price or latency.</p></article>
+        <article class="card"><span class="kicker">Product</span><h3>Training format is not API contract</h3><p>Think/tool schemas in the report should not be read as final guarantees about public API behavior.</p></article>
+      </div>
+    </section>
+
+    <section id="sources">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Sources</div>
+          <h2>Sources and provenance</h2>
+        </div>
+        <p>Primary source: the DeepSeek V4 PDF linked below, extracted on 2026-06-11. Web pages and model repositories may change after this date.</p>
+      </div>
+      <div class="source-list">
+        <article><code>S1</code><h3>DeepSeek_V4.pdf</h3><p><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/resolve/main/DeepSeek_V4.pdf">Direct PDF link</a>. Used for architecture, formulas, training, evaluation, and limitations.</p></article>
+        <article><code>S2</code><h3>Hugging Face file page</h3><p><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf">File page</a>. Used to locate the PDF in the model repository.</p></article>
+        <article><code>S3</code><h3>DeepSeek V4 collection</h3><p><a href="https://huggingface.co/collections/deepseek-ai/deepseek-v4">Collection page</a>. Used only as a related model entry point; the technical reading follows the PDF.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>DeepSeek V4 Technical Report Deep Dive · English single-file HTML · no external runtime dependencies.</p>
+    </div>
+  </footer>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll("[data-filter]"));
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-category]"));
+
+    function setFilter(filter) {
+      buttons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+      });
+      rows.forEach((row) => {
+        row.dataset.hidden = String(filter !== "all" && row.dataset.category !== filter);
+      });
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => setFilter(button.dataset.filter));
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepSeek V4 技术报告深度解读</title>
+  <style>
+    :root {
+      --bg: #f4f2eb;
+      --paper: #fffdf7;
+      --ink: #191b17;
+      --soft-ink: #40443d;
+      --muted: #696f63;
+      --line: #d9d5c8;
+      --line-strong: #aaa392;
+      --lime: #c7ff42;
+      --green: #0f7d59;
+      --blue: #2256b8;
+      --rust: #be5438;
+      --amber: #b98517;
+      --violet: #6f55b5;
+      --panel: rgba(255, 253, 247, .92);
+      --shadow: 0 24px 70px rgba(33, 35, 28, .12);
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+      --sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --serif: "Songti SC", "Noto Serif CJK SC", "Iowan Old Style", Georgia, serif;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(25, 27, 23, .045) 1px, transparent 1px) 0 0 / 40px 40px,
+        linear-gradient(0deg, rgba(25, 27, 23, .035) 1px, transparent 1px) 0 0 / 40px 40px,
+        radial-gradient(circle at 84% 9%, rgba(199, 255, 66, .32), transparent 26rem),
+        radial-gradient(circle at 8% 34%, rgba(34, 86, 184, .08), transparent 22rem),
+        var(--bg);
+      font-family: var(--sans);
+      line-height: 1.62;
+    }
+
+    a {
+      color: inherit;
+      text-decoration-color: rgba(15, 125, 89, .38);
+      text-decoration-thickness: 2px;
+      text-underline-offset: .2em;
+    }
+
+    a:hover { text-decoration-color: var(--green); }
+    :focus-visible { outline: 3px solid rgba(34, 86, 184, .85); outline-offset: 3px; }
+
+    .skip {
+      position: fixed;
+      top: .65rem;
+      left: .65rem;
+      z-index: 20;
+      transform: translateY(-160%);
+      border-radius: 6px;
+      background: var(--ink);
+      color: white;
+      padding: .5rem .75rem;
+      transition: transform .16s ease;
+    }
+
+    .skip:focus { transform: translateY(0); }
+
+    .shell {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(217, 213, 200, .9);
+      background: rgba(244, 242, 235, .92);
+      backdrop-filter: blur(16px);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .62rem 0;
+    }
+
+    .brand {
+      font-family: var(--mono);
+      font-size: .74rem;
+      letter-spacing: .12em;
+      color: var(--muted);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    nav {
+      display: flex;
+      gap: .25rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    nav a {
+      display: inline-flex;
+      min-height: 34px;
+      align-items: center;
+      padding: .28rem .62rem;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: .88rem;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    nav a:hover,
+    nav a:focus-visible {
+      background: var(--paper);
+      border-color: var(--line);
+    }
+
+    header.hero {
+      min-height: 88vh;
+      display: grid;
+      align-items: end;
+      padding: 4rem 0 3rem;
+    }
+
+    h1, h2, h3, h4 {
+      margin: 0;
+      line-height: 1.08;
+      text-wrap: balance;
+    }
+
+    h1 {
+      max-width: 1060px;
+      font-family: var(--serif);
+      font-size: clamp(3.2rem, 7.6vw, 7.4rem);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-family: var(--serif);
+      font-size: clamp(2.15rem, 4.3vw, 4.4rem);
+      margin-bottom: 1rem;
+    }
+
+    h3 { font-size: 1.08rem; margin-bottom: .45rem; }
+    h4 { font-size: .96rem; margin-bottom: .35rem; }
+    p { margin: 0; color: var(--muted); text-wrap: pretty; }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: .85rem;
+      font-family: var(--mono);
+      font-size: .75rem;
+      letter-spacing: .12em;
+      color: var(--soft-ink);
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 44px;
+      height: 2px;
+      background: var(--lime);
+      box-shadow: 0 0 0 1px rgba(25, 27, 23, .15);
+    }
+
+    .lede {
+      max-width: 820px;
+      margin-top: 1.1rem;
+      color: #30342e;
+      font-size: clamp(1.08rem, 2.1vw, 1.35rem);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(290px, 390px);
+      gap: 1rem;
+      align-items: stretch;
+      margin-top: 2rem;
+    }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .75rem;
+    }
+
+    .metric, .card, .panel, .note {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .metric {
+      min-width: 0;
+      padding: .9rem;
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: clamp(1.35rem, 3vw, 2.05rem);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: .38rem;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+
+    .verdict {
+      border: 1px solid var(--ink);
+      background: var(--paper);
+      box-shadow: 12px 12px 0 rgba(25, 27, 23, .08);
+      padding: 1.05rem;
+    }
+
+    .verdict b {
+      display: block;
+      margin-bottom: .55rem;
+      font-size: 1.05rem;
+    }
+
+    main { padding-bottom: 72px; }
+
+    section {
+      scroll-margin-top: 80px;
+      margin-bottom: 68px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(250px, .38fr);
+      gap: 1.4rem;
+      align-items: end;
+      margin-bottom: 1.05rem;
+    }
+
+    .section-head > p {
+      border-left: 3px solid var(--line);
+      padding-left: 1rem;
+    }
+
+    .panel {
+      padding: clamp(1rem, 2.8vw, 2rem);
+      box-shadow: var(--shadow);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+
+    .card {
+      padding: .95rem;
+      min-width: 0;
+      background: linear-gradient(180deg, rgba(255, 253, 247, .98), rgba(250, 248, 239, .9));
+    }
+
+    .card .kicker {
+      display: inline-flex;
+      margin-bottom: .55rem;
+      padding: .16rem .46rem;
+      border: 1px solid rgba(15, 125, 89, .28);
+      border-radius: 999px;
+      background: rgba(199, 255, 66, .22);
+      color: #293322;
+      font-family: var(--mono);
+      font-size: .72rem;
+      text-transform: uppercase;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: .58rem;
+      margin-top: .9rem;
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 128px;
+      padding: .85rem;
+      border: 1px solid var(--ink);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+
+    .flow-step::after {
+      content: "→";
+      position: absolute;
+      right: -.55rem;
+      top: 50%;
+      width: 1rem;
+      transform: translateY(-50%);
+      color: var(--green);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+
+    .flow-step:last-child::after { content: ""; }
+
+    .flow-step b {
+      display: block;
+      margin-bottom: .35rem;
+      font-family: var(--mono);
+      font-size: .78rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .mini-flow {
+      display: grid;
+      gap: .55rem;
+      margin-top: .75rem;
+    }
+
+    .mini-flow .item {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: .7rem;
+      align-items: start;
+      padding: .62rem;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 253, 247, .76);
+    }
+
+    .mini-flow b {
+      font-family: var(--mono);
+      font-size: .78rem;
+      color: var(--ink);
+    }
+
+    .formula-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .9rem;
+    }
+
+    .formula {
+      padding: .95rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #181b16;
+      color: #f4f2eb;
+    }
+
+    .formula code {
+      display: block;
+      white-space: pre-wrap;
+      color: #f7ffe8;
+      font-family: var(--mono);
+      font-size: .84rem;
+      line-height: 1.48;
+    }
+
+    .formula p {
+      margin-top: .65rem;
+      color: #cbd3bf;
+      font-size: .88rem;
+    }
+
+    .bars {
+      display: grid;
+      gap: .8rem;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 165px minmax(0, 1fr) 72px;
+      gap: .75rem;
+      align-items: center;
+    }
+
+    .bar-row span {
+      color: var(--muted);
+      font-size: .9rem;
+      min-width: 0;
+    }
+
+    .track {
+      height: 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #e9e4d5;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      width: var(--value);
+      background: linear-gradient(90deg, var(--green), var(--lime));
+      border-right: 1px solid rgba(25, 27, 23, .45);
+    }
+
+    .bar-row output {
+      text-align: right;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .86rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stack {
+      display: grid;
+      gap: .75rem;
+    }
+
+    .stack-row {
+      display: grid;
+      grid-template-columns: 142px minmax(0, 1fr);
+      gap: .7rem;
+      align-items: center;
+    }
+
+    .stack-label {
+      color: var(--soft-ink);
+      font-size: .9rem;
+    }
+
+    .stack-bar {
+      display: flex;
+      height: 28px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #e9e4d5;
+    }
+
+    .seg {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      color: white;
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .seg.win { background: var(--green); }
+    .seg.tie { background: var(--amber); }
+    .seg.lose { background: var(--rust); }
+
+    .table-controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin: .2rem 0 1rem;
+    }
+
+    button {
+      min-height: 38px;
+      padding: .4rem .7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+    }
+
+    button:hover { border-color: var(--ink); transform: translateY(-1px); }
+    button[aria-pressed="true"] { background: var(--lime); border-color: var(--ink); }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+
+    table {
+      width: 100%;
+      min-width: 900px;
+      border-collapse: collapse;
+      font-size: .9rem;
+    }
+
+    th, td {
+      padding: .64rem .6rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f0eadc;
+      color: #30342e;
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    td.num, th.num {
+      text-align: right;
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    tr[data-hidden="true"] { display: none; }
+
+    .pill {
+      display: inline-flex;
+      padding: .12rem .42rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #f7f3e7;
+      font-family: var(--mono);
+      font-size: .7rem;
+      white-space: nowrap;
+    }
+
+    .chart-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: .9rem;
+      overflow: hidden;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .legend {
+      display: flex;
+      gap: .8rem;
+      flex-wrap: wrap;
+      margin-top: .65rem;
+      color: var(--muted);
+      font-size: .86rem;
+    }
+
+    .legend i {
+      display: inline-block;
+      width: .7rem;
+      height: .7rem;
+      border-radius: 2px;
+      margin-right: .28rem;
+      vertical-align: -1px;
+    }
+
+    .note {
+      padding: .85rem;
+      border-left: 5px solid var(--rust);
+      background: #fff9f4;
+    }
+
+    .note p { color: #63443a; }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .85rem;
+    }
+
+    .source-list article {
+      padding: .9rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      min-width: 0;
+    }
+
+    .source-list code {
+      display: inline-block;
+      margin-bottom: .4rem;
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: .76rem;
+    }
+
+    .compact-list {
+      margin: .65rem 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: .55rem;
+    }
+
+    .compact-list li {
+      position: relative;
+      padding-left: 1.05rem;
+      color: var(--muted);
+    }
+
+    .compact-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: .72em;
+      width: .38rem;
+      height: .38rem;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .footer {
+      border-top: 1px solid var(--line);
+      padding: 24px 0 40px;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    @media (max-width: 980px) {
+      .topbar-inner { align-items: start; flex-direction: column; }
+      .hero-grid, .section-head, .grid-2, .grid-3, .grid-4, .comparison, .formula-grid, .source-list {
+        grid-template-columns: 1fr;
+      }
+      .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow { grid-template-columns: 1fr; }
+      .flow-step::after {
+        content: "↓";
+        right: 50%;
+        top: auto;
+        bottom: -.9rem;
+        transform: translateX(50%);
+      }
+      .flow-step:last-child::after { content: ""; }
+    }
+
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 22px, 1240px); }
+      h1 { font-size: 2.75rem; }
+      .metric-strip { grid-template-columns: 1fr; }
+      .bar-row, .stack-row { grid-template-columns: 1fr; gap: .34rem; }
+      .bar-row output { text-align: left; }
+      table { min-width: 760px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">跳到正文</a>
+  <div class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand">DeepSeek V4 PDF Deep Dive</div>
+      <nav aria-label="页面导航">
+        <a href="#overview">总览</a>
+        <a href="#architecture">架构</a>
+        <a href="#algorithms">算法公式</a>
+        <a href="#data-training">数据/预训练</a>
+        <a href="#post-training">后训练</a>
+        <a href="#infra">基础设施</a>
+        <a href="#evaluation">评测</a>
+        <a href="#limits">限制</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div class="shell">
+      <div class="eyebrow">2026-06-11 · PDF technical reading</div>
+      <h1><span translate="no">DeepSeek V4</span> 技术报告深度解读</h1>
+      <p class="lede">
+        这版不再只是摘要，而是按论文结构把架构、算法、训练数据、预训练、后训练、推理系统和评测结果串起来。核心判断：V4 的主战场是把百万 token 上下文从“能跑”压到“能常规部署”。
+      </p>
+      <div class="hero-grid">
+        <div class="metric-strip" aria-label="核心数字">
+          <div class="metric"><strong>1M</strong><span>原生上下文长度</span></div>
+          <div class="metric"><strong>1.6T / 49B</strong><span>V4-Pro 总参数 / 激活参数</span></div>
+          <div class="metric"><strong>284B / 13B</strong><span>V4-Flash 总参数 / 激活参数</span></div>
+          <div class="metric"><strong>32T+</strong><span>预训练 token 量级</span></div>
+        </div>
+        <aside class="verdict">
+          <b>阅读结论</b>
+          <p>
+            DeepSeek-V4 的技术路线可以概括为：用 CSA/HCA/SWA 改造注意力，用 mHC 改造残差路径，用 Muon 和稳定性策略支撑万亿 MoE 训练，再用 OPD、FP4 QAT、工具/Agent 数据和百万上下文基础设施完成后训练与服务。
+          </p>
+        </aside>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section id="overview">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">0. Reading map</div>
+          <h2>先建立整篇报告的骨架</h2>
+        </div>
+        <p>报告共 58 页，主线不是单个 benchmark，而是长上下文效率、MoE 训练稳定性、后训练合并和服务系统的联动。</p>
+      </div>
+      <div class="grid-4">
+        <article class="card">
+          <span class="kicker">Problem</span>
+          <h3>百万上下文卡在注意力成本</h3>
+          <p>vanilla attention 的计算和 KV cache 在超长上下文中成为瓶颈，也限制 test-time scaling 和长周期 Agent。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Architecture</span>
+          <h3>混合注意力替代单一注意力</h3>
+          <p>CSA 负责压缩+稀疏检索，HCA 负责重压缩+稠密注意力，SWA 保住短程局部依赖。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Training</span>
+          <h3>Muon + 稳定性工程</h3>
+          <p>预训练用 Muon 更新多数模块；MoE loss spike 用 Anticipatory Routing 和 SwiGLU Clamping 压住。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Post-train</span>
+          <h3>专家先强化，再蒸馏统一</h3>
+          <p>数学、代码、Agent、指令等专家模型经过 SFT/RL 后，通过多教师 OPD 合入一个统一模型。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="architecture" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">1. Architecture</div>
+          <h2>架构：Transformer 主体不变，关键路径全部重做</h2>
+        </div>
+        <p>V4 继承 DeepSeekMoE 和 MTP，但新增 mHC、CSA/HCA 混合注意力、Muon 优化器，并调整 MoE 路由与系统并行方式。</p>
+      </div>
+
+      <div class="flow" aria-label="DeepSeek V4 架构流程">
+        <div class="flow-step"><b>Input</b><p>token 进入 embedding，超长上下文从一开始就按可压缩状态组织。</p></div>
+        <div class="flow-step"><b>mHC</b><p>用受约束的动态连接增强残差路径，重点是稳定深层信号传播。</p></div>
+        <div class="flow-step"><b>SWA</b><p>保留最近窗口的未压缩 KV，解决本块内与近邻 token 的细节依赖。</p></div>
+        <div class="flow-step"><b>CSA/HCA</b><p>长程信息分别走压缩稀疏注意力与重压缩稠密注意力。</p></div>
+        <div class="flow-step"><b>MoE</b><p>所有 block 使用 MoE；早期 3 层使用 Hash routing；每 token 激活 6 个 routed experts。</p></div>
+        <div class="flow-step"><b>MTP</b><p>多 token 预测深度为 1，继续作为训练信号和推理吞吐优化基础。</p></div>
+      </div>
+
+      <div class="comparison">
+        <article class="card">
+          <span class="kicker">V4-Flash</span>
+          <h3>小激活量、强调性价比</h3>
+          <div class="mini-flow">
+            <div class="item"><b>规模</b><p>43 层，hidden 4096；总参数 284B，激活 13B。</p></div>
+            <div class="item"><b>注意力</b><p>前两层纯 SWA，之后 CSA/HCA 交错；CSA m=4、top-k=512；HCA m'=128；window=128。</p></div>
+            <div class="item"><b>MoE</b><p>1 shared expert + 256 routed experts；每 token 激活 6 个；expert hidden 2048。</p></div>
+          </div>
+        </article>
+        <article class="card">
+          <span class="kicker">V4-Pro</span>
+          <h3>更大知识容量、更强难题表现</h3>
+          <div class="mini-flow">
+            <div class="item"><b>规模</b><p>61 层，hidden 7168；总参数 1.6T，激活 49B。</p></div>
+            <div class="item"><b>注意力</b><p>前两层 HCA，之后 CSA/HCA 交错；CSA m=4、top-k=1024；HCA m'=128；window=128。</p></div>
+            <div class="item"><b>MoE</b><p>1 shared expert + 384 routed experts；每 token 激活 6 个；expert hidden 3072。</p></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="grid-2" style="margin-top: 1rem;">
+        <article class="chart-card">
+          <h3>参数规模对比</h3>
+          <div class="bars" aria-label="参数规模条形图">
+            <div class="bar-row"><span>V3.2 total</span><div class="track"><div class="fill" style="--value:42%"></div></div><output>671B</output></div>
+            <div class="bar-row"><span>V3.2 activated</span><div class="track"><div class="fill" style="--value:76%"></div></div><output>37B</output></div>
+            <div class="bar-row"><span>V4-Flash total</span><div class="track"><div class="fill" style="--value:18%"></div></div><output>284B</output></div>
+            <div class="bar-row"><span>V4-Flash activated</span><div class="track"><div class="fill" style="--value:27%"></div></div><output>13B</output></div>
+            <div class="bar-row"><span>V4-Pro total</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>1.6T</output></div>
+            <div class="bar-row"><span>V4-Pro activated</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>49B</output></div>
+          </div>
+          <p style="margin-top: .75rem;">条形图分别按 total=1.6T、activated=49B 归一化；不要把两类条长横向比较。</p>
+        </article>
+        <article class="chart-card">
+          <h3>1M 上下文效率，相对 V3.2</h3>
+          <div class="bars" aria-label="长上下文效率条形图">
+            <div class="bar-row"><span>V3.2 FLOPs</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>100%</output></div>
+            <div class="bar-row"><span>V4-Pro FLOPs</span><div class="track"><div class="fill" style="--value:27%"></div></div><output>27%</output></div>
+            <div class="bar-row"><span>V4-Flash FLOPs</span><div class="track"><div class="fill" style="--value:10%"></div></div><output>10%</output></div>
+            <div class="bar-row"><span>V3.2 KV cache</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>100%</output></div>
+            <div class="bar-row"><span>V4-Pro KV cache</span><div class="track"><div class="fill" style="--value:10%"></div></div><output>10%</output></div>
+            <div class="bar-row"><span>V4-Flash KV cache</span><div class="track"><div class="fill" style="--value:7%"></div></div><output>7%</output></div>
+          </div>
+          <p style="margin-top: .75rem;">PDF 还给出相对常见 BF16 GQA8 设定，1M 场景 KV cache 可降到约 2% 的量级。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="algorithms">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">2. Algorithms & formulas</div>
+          <h2>算法与核心公式：为什么能压长上下文</h2>
+        </div>
+        <p>这里把论文中的公式改写成可读版本，保留变量关系而不复制排版细节。重点是看每个公式解决什么工程问题。</p>
+      </div>
+
+      <div class="grid-3">
+        <article class="card">
+          <span class="kicker">CSA</span>
+          <h3>压缩 + 稀疏选择</h3>
+          <p>每 m 个 token 压成一个 KV entry，再用 lightning indexer 给 query 选择 top-k 压缩块。适合“从很长历史里检索少量关键块”。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">HCA</span>
+          <h3>更激进压缩 + 稠密读</h3>
+          <p>每 m' 个 token 压成一个 entry，m' 远大于 m；不做 sparse top-k，而是对重压缩后的序列做 MQA。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">SWA</span>
+          <h3>近邻信息不压缩</h3>
+          <p>CSA/HCA 只能看之前完整压缩块，所以额外保留最近 nwin 个未压缩 KV，避免局部语言建模被压坏。</p>
+        </article>
+      </div>
+
+      <div class="formula-grid" style="margin-top: 1rem;">
+        <article class="formula">
+          <h3>mHC 的稳定性约束</h3>
+          <code>M = { B ∈ R^(n×n) | B·1 = 1, 1^T·B = 1^T, B ≥ 0 }
+||B_l||₂ ≤ 1</code>
+          <p>残差映射 B 被约束到双随机矩阵流形：行列和都为 1，元素非负。这样谱范数不超过 1，减少深层堆叠时的信号放大。</p>
+        </article>
+        <article class="formula">
+          <h3>Sinkhorn-Knopp 投影</h3>
+          <code>M^(0) = exp(B~_l)
+M^(t) = T_row(T_col(M^(t-1)))
+B_l = M^(t_max),   t_max = 20</code>
+          <p>先把 unconstrained 参数指数化为正，再交替做列归一化和行归一化，得到满足 mHC 约束的 B。</p>
+        </article>
+        <article class="formula">
+          <h3>CSA 压缩 KV</h3>
+          <code>C_a = H·W_aKV,   C_b = H·W_bKV
+Z_a = H·W_aZ,    Z_b = H·W_bZ
+C_i^comp = Σ S_a,j ⊙ C_a,j + Σ S_b,j ⊙ C_b,j</code>
+          <p>CSA 使用两路相邻/重叠窗口，通过 softmax 权重把 2m 个候选压成一个 block entry，实际序列长度压到约 1/m。</p>
+        </article>
+        <article class="formula">
+          <h3>Lightning indexer 选择 top-k</h3>
+          <code>c_t^Q = h_t·W_DQ
+q_t^I = c_t^Q·W_IUQ
+I_{t,s} = Σ_h w^I_{t,h} · ReLU(q^I_{t,h} · K^Icomp_s)
+C_t^sparse = { C_s^comp | I_{t,s} ∈ Top-k(I_{t,:}) }</code>
+          <p>对 query 和历史压缩块打分，只保留 top-k 块参与核心注意力，这是 CSA 在 1M 场景省 FLOPs 的关键。</p>
+        </article>
+        <article class="formula">
+          <h3>HCA 重压缩</h3>
+          <code>C = H·W_KV,   Z = H·W_Z
+S_{m'i:m'(i+1)-1} = softmax_row(Z + B)
+C_i^comp = Σ_{j=m'i}^{m'(i+1)-1} S_j ⊙ C_j</code>
+          <p>HCA 不使用重叠压缩，也不做 sparse selector；它用更大的 m' 把序列压得更短，再稠密读取。</p>
+        </article>
+        <article class="formula">
+          <h3>Attention sink</h3>
+          <code>s_{h,i,j} =
+  exp(z_{h,i,j}) / (Σ_k exp(z_{h,i,k}) + exp(z'_h))</code>
+          <p>分母里多加可学习 sink logit，让某个 head 的总注意力质量不必等于 1，甚至可以接近 0，减少无意义强制分配。</p>
+        </article>
+        <article class="formula">
+          <h3>Muon 更新</h3>
+          <code>G_t = ∇_W L_t(W_{t-1})
+M_t = μ M_{t-1} + G_t
+O'_t = HybridNewtonSchulz(μM_t + G_t)
+O_t = O'_t · sqrt(max(n,m)) · γ
+W_t = W_{t-1}(1 - ηλ) - ηO_t</code>
+          <p>Muon 对大多数模块做矩阵级更新和正交化；embedding、prediction head、RMSNorm 等仍用 AdamW。</p>
+        </article>
+        <article class="formula">
+          <h3>Hybrid Newton-Schulz</h3>
+          <code>M_k = aM_{k-1}
+    + b(M_{k-1}M_{k-1}^T)M_{k-1}
+    + c(M_{k-1}M_{k-1}^T)^2M_{k-1}</code>
+          <p>前 8 次迭代用激进系数快速靠近奇异值 1，后 2 次用稳定系数收敛；目标是近似得到 U·V^T。</p>
+        </article>
+        <article class="formula">
+          <h3>OPD 多教师目标</h3>
+          <code>L_OPD(θ) = Σ_i w_i · D_KL(π_θ || π_Ei)</code>
+          <p>学生模型在自己采样出的轨迹上，向多个领域专家的输出分布做 reverse-KL 对齐，避免直接权重合并的退化。</p>
+        </article>
+        <article class="formula">
+          <h3>通信可隐藏条件</h3>
+          <code>C / B ≤ V_comp / V_comm
+DeepSeek-V4-Pro: C / B ≤ 2d = 6144 FLOPs/Byte</code>
+          <p>MoE expert parallelism 的关键不是无限堆带宽，而是计算/通信比例满足阈值后，通信能被计算覆盖。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="data-training" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">3. Data & pre-training</div>
+          <h2>数据与预训练流程：报告披露了方向，没有披露配比</h2>
+        </div>
+        <p>这里要特别谨慎：PDF 给出了数据类型和处理策略，但没有公开各类数据占比，所以不能画“真实数据配比饼图”。</p>
+      </div>
+
+      <div class="grid-2">
+        <article class="card">
+          <span class="kicker">Data construction</span>
+          <h3>预训练数据覆盖面</h3>
+          <ul class="compact-list">
+            <li>在 DeepSeek-V3 数据基础上继续提升多样性、质量和有效长上下文。</li>
+            <li>Web 数据过滤批量自动生成和模板化内容，降低 model collapse 风险。</li>
+            <li>数学与代码仍是核心；mid-training 阶段加入 agentic data 来增强编码能力。</li>
+            <li>多语言语料扩大，目标是覆盖长尾文化知识。</li>
+            <li>长文档特别强调科学论文、技术报告等学术价值材料。</li>
+            <li>tokenizer 维持 128K 词表，继承 token-splitting 与 FIM；新增上下文构造特殊 token。</li>
+          </ul>
+        </article>
+        <article class="chart-card">
+          <h3>训练 token 和 batch 设置</h3>
+          <div class="bars">
+            <div class="bar-row"><span>V4-Flash tokens</span><div class="track"><div class="fill" style="--value:97%"></div></div><output>32T</output></div>
+            <div class="bar-row"><span>V4-Pro tokens</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>33T</output></div>
+            <div class="bar-row"><span>Flash max batch</span><div class="track"><div class="fill" style="--value:80%"></div></div><output>75.5M</output></div>
+            <div class="bar-row"><span>Pro max batch</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>94.4M</output></div>
+            <div class="bar-row"><span>Flash peak LR</span><div class="track"><div class="fill" style="--value:100%"></div></div><output>2.7e-4</output></div>
+            <div class="bar-row"><span>Pro peak LR</span><div class="track"><div class="fill" style="--value:74%"></div></div><output>2.0e-4</output></div>
+          </div>
+          <p style="margin-top: .75rem;">序列长度从 4K 逐步扩到 16K、64K、1M；Flash 前 1T token 使用 dense attention warmup，64K 阶段引入 sparse attention。</p>
+        </article>
+      </div>
+
+      <div class="flow" style="margin-top: 1rem;" aria-label="预训练流程">
+        <div class="flow-step"><b>Corpus</b><p>Web、代码、数学、多语言、长文档、agentic 数据。</p></div>
+        <div class="flow-step"><b>Pack</b><p>跨来源文档打包，减少截断；sample-level attention masking。</p></div>
+        <div class="flow-step"><b>Warmup</b><p>LR 2000 steps warmup；dense attention 阶段稳定基础能力。</p></div>
+        <div class="flow-step"><b>Sparse</b><p>64K 引入 CSA lightning indexer，再长期 sparse attention 训练。</p></div>
+        <div class="flow-step"><b>Scale</b><p>序列长度逐步扩到 1M，模型 native 支持百万上下文。</p></div>
+        <div class="flow-step"><b>Stabilize</b><p>用 anticipatory routing、SwiGLU clamp 控制 MoE outliers 和 loss spikes。</p></div>
+      </div>
+
+      <div class="note" style="margin-top: 1rem;">
+        <p><strong>数据缺口：</strong>报告没有公开数学、代码、网页、多语言、长文档等类别的精确 token 占比。这里用“数据地图”而不是配比图，是为了不伪造论文没有给出的数字。</p>
+      </div>
+    </section>
+
+    <section id="post-training">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">4. Post-training</div>
+          <h2>后训练：先造专家，再用 OPD 合并能力</h2>
+        </div>
+        <p>报告把 DeepSeek-V3.2 的 mixed RL 阶段替换成 On-Policy Distillation，把多个领域专家的行为蒸馏进统一模型。</p>
+      </div>
+
+      <div class="flow" aria-label="后训练流程">
+        <div class="flow-step"><b>SFT</b><p>每个目标领域先用高质量领域数据建立基础能力。</p></div>
+        <div class="flow-step"><b>GRPO RL</b><p>数学、代码、Agent、指令等专家分别用领域 reward 信号强化。</p></div>
+        <div class="flow-step"><b>GRM</b><p>硬验证任务用 rubric-guided RL data 和生成式奖励模型评价轨迹。</p></div>
+        <div class="flow-step"><b>Tool schema</b><p>引入 DSML/XML 风格工具调用，减少转义失败和工具调用错误。</p></div>
+        <div class="flow-step"><b>OPD</b><p>十多个教师模型，full-vocabulary logits distillation。</p></div>
+        <div class="flow-step"><b>QAT</b><p>MoE expert weights 与 CSA indexer QK path 做 FP4 量化感知训练。</p></div>
+      </div>
+
+      <div class="grid-3" style="margin-top: 1rem;">
+        <article class="card">
+          <span class="kicker">Reasoning modes</span>
+          <h3>Non-think / High / Max</h3>
+          <p>三档推理模式来自不同 RL 配置：长度惩罚、上下文窗口和输出 reasoning token 长度不同。Max 还通过系统提示推动更彻底的推理。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Interleaved thinking</span>
+          <h3>工具场景保留推理历史</h3>
+          <p>在 tool-calling 场景，V4 保留跨轮 reasoning 内容以支持长周期 Agent；普通聊天仍在新用户消息后丢弃旧 reasoning。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Quick instruction</span>
+          <h3>把辅助任务变成特殊 token</h3>
+          <p>搜索触发、标题、query、authority、domain、URL 读取判断等由同一模型复用 KV cache 完成，避免额外小模型重复 prefill。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="infra" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">5. Infrastructure</div>
+          <h2>基础设施：模型结构的收益依赖系统实现</h2>
+        </div>
+        <p>V4 的复杂架构如果没有训练和推理系统配合，很难兑现效率收益。报告在这里给了很多工程细节。</p>
+      </div>
+      <div class="grid-3">
+        <article class="card">
+          <span class="kicker">MegaMoE</span>
+          <h3>专家并行的细粒度流水</h3>
+          <p>把 Dispatch、Linear-1、SwiGLU/FP8 cast、Linear-2、Combine 拆成 wave，让通信、计算、结果回传并行。报告称一般推理 1.50-1.73×，延迟敏感场景最高 1.96×。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">TileLang</span>
+          <h3>用 DSL 写融合 kernel</h3>
+          <p>大量细粒度 ATen operator 会拖慢训练和推理，TileLang 用 host codegen 和 fused kernels 降低调用开销，也便于快速试验注意力变体。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Determinism</span>
+          <h3>batch-invariant 与确定性 kernel</h3>
+          <p>MoE dispatch、combine、mHC 小矩阵乘法都做了确定性处理，服务和训练中减少 batch 变化导致的非确定输出。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">KV cache</span>
+          <h3>异构 KV cache layout</h3>
+          <p>把 CSA/HCA compressed KV、CSA indexer KV、SWA KV、未完成压缩尾部状态分开管理，突破传统 PagedAttention 的同构假设。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">On-disk prefix</span>
+          <h3>共享 prefix 复用</h3>
+          <p>CSA/HCA 压缩 KV 可落盘复用；SWA 因体积约为压缩 KV 的 8 倍，提供 full caching、periodic checkpointing、zero caching 三种取舍。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">DSec</span>
+          <h3>Agent 沙箱平台</h3>
+          <p>报告描述 Rust API gateway、per-host agent、cluster watcher 和 3FS 存储，支持函数调用、容器、microVM、fullVM，并记录 trajectory 以便恢复和复现。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="evaluation">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">6. Evaluation</div>
+          <h2>评测结果：分清 base、post-trained、real-world 三类表</h2>
+        </div>
+        <p>所有数字都按 PDF 报告口径呈现；其中很多是内部框架或内部 harness，适合看趋势，但不等价于第三方独立复现。</p>
+      </div>
+
+      <div class="grid-2">
+        <article class="chart-card">
+          <h3>Base 模型代表性分数</h3>
+          <svg viewBox="0 0 680 290" role="img" aria-label="V3.2 Base, V4 Flash Base, V4 Pro Base benchmarks">
+            <line x1="115" y1="240" x2="650" y2="240" stroke="#d9d5c8"/>
+            <line x1="115" y1="40" x2="115" y2="240" stroke="#d9d5c8"/>
+            <g font-family="SFMono-Regular, Menlo, monospace" font-size="12" fill="#696f63">
+              <text x="80" y="244">0</text><text x="72" y="195">25</text><text x="72" y="145">50</text><text x="72" y="95">75</text><text x="66" y="45">100</text>
+            </g>
+            <g font-family="Avenir Next, sans-serif" font-size="12" fill="#40443d">
+              <text x="126" y="265">MMLU-Pro</text><text x="248" y="265">SimpleQA</text><text x="370" y="265">HumanEval</text><text x="496" y="265">LongBench</text>
+            </g>
+            <g>
+              <rect x="130" y="109" width="22" height="131" fill="#aaa392"/><rect x="155" y="103" width="22" height="137" fill="#0f7d59"/><rect x="180" y="93" width="22" height="147" fill="#2256b8"/>
+              <rect x="254" y="183" width="22" height="57" fill="#aaa392"/><rect x="279" y="180" width="22" height="60" fill="#0f7d59"/><rect x="304" y="130" width="22" height="110" fill="#2256b8"/>
+              <rect x="378" y="114" width="22" height="126" fill="#aaa392"/><rect x="403" y="101" width="22" height="139" fill="#0f7d59"/><rect x="428" y="86" width="22" height="154" fill="#2256b8"/>
+              <rect x="502" y="160" width="22" height="80" fill="#aaa392"/><rect x="527" y="151" width="22" height="89" fill="#0f7d59"/><rect x="552" y="137" width="22" height="103" fill="#2256b8"/>
+            </g>
+          </svg>
+          <div class="legend"><span><i style="background:#aaa392"></i>V3.2 Base</span><span><i style="background:#0f7d59"></i>V4-Flash Base</span><span><i style="background:#2256b8"></i>V4-Pro Base</span></div>
+        </article>
+
+        <article class="chart-card">
+          <h3>MRCR 8-needle 随上下文长度变化</h3>
+          <svg viewBox="0 0 680 290" role="img" aria-label="MRCR line chart">
+            <line x1="70" y1="238" x2="640" y2="238" stroke="#d9d5c8"/>
+            <line x1="70" y1="35" x2="70" y2="238" stroke="#d9d5c8"/>
+            <g stroke="#e3dece">
+              <line x1="70" y1="197" x2="640" y2="197"/><line x1="70" y1="157" x2="640" y2="157"/><line x1="70" y1="116" x2="640" y2="116"/><line x1="70" y1="76" x2="640" y2="76"/>
+            </g>
+            <polyline fill="none" stroke="#2256b8" stroke-width="4" points="90,55 165,65 240,47 315,55 390,51 465,72 540,104 615,118"/>
+            <polyline fill="none" stroke="#0f7d59" stroke-width="4" points="90,53 165,68 240,62 315,66 390,62 465,84 540,116 615,139"/>
+            <g fill="#2256b8"><circle cx="90" cy="55" r="4"/><circle cx="165" cy="65" r="4"/><circle cx="240" cy="47" r="4"/><circle cx="315" cy="55" r="4"/><circle cx="390" cy="51" r="4"/><circle cx="465" cy="72" r="4"/><circle cx="540" cy="104" r="4"/><circle cx="615" cy="118" r="4"/></g>
+            <g fill="#0f7d59"><circle cx="90" cy="53" r="4"/><circle cx="165" cy="68" r="4"/><circle cx="240" cy="62" r="4"/><circle cx="315" cy="66" r="4"/><circle cx="390" cy="62" r="4"/><circle cx="465" cy="84" r="4"/><circle cx="540" cy="116" r="4"/><circle cx="615" cy="139" r="4"/></g>
+            <g font-family="SFMono-Regular, Menlo, monospace" font-size="11" fill="#696f63">
+              <text x="84" y="258">8K</text><text x="155" y="258">16K</text><text x="232" y="258">32K</text><text x="306" y="258">64K</text><text x="378" y="258">128K</text><text x="453" y="258">256K</text><text x="528" y="258">512K</text><text x="600" y="258">1M</text>
+              <text x="34" y="241">0.0</text><text x="34" y="119">0.6</text><text x="34" y="38">1.0</text>
+            </g>
+          </svg>
+          <div class="legend"><span><i style="background:#2256b8"></i>V4-Pro-Max</span><span><i style="background:#0f7d59"></i>V4-Flash-Max</span></div>
+        </article>
+      </div>
+
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Table 1：Base 模型内部统一评测</h3>
+        <p style="margin-bottom:.75rem;">这张表对应预训练后、post-training 前的 base 模型。它更适合看架构和预训练数据带来的底座提升，而不是最终聊天/Agent 能力。</p>
+        <div class="table-wrap" role="region" aria-label="Table 1 DeepSeek base models" tabindex="0">
+          <table>
+            <thead>
+              <tr>
+                <th>Benchmark</th><th>类别</th><th>Shots</th><th class="num">V3.2 Base</th><th class="num">V4-Flash Base</th><th class="num">V4-Pro Base</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Activated Params</td><td><span class="pill">Scale</span></td><td>-</td><td class="num">37B</td><td class="num">13B</td><td class="num">49B</td></tr>
+              <tr><td>Total Params</td><td><span class="pill">Scale</span></td><td>-</td><td class="num">671B</td><td class="num">284B</td><td class="num">1.6T</td></tr>
+              <tr><td>AGIEval</td><td><span class="pill">World</span></td><td>0-shot</td><td class="num">80.1</td><td class="num">82.6</td><td class="num">83.1</td></tr>
+              <tr><td>MMLU</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">87.8</td><td class="num">88.7</td><td class="num">90.1</td></tr>
+              <tr><td>MMLU-Pro</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">65.5</td><td class="num">68.3</td><td class="num">73.5</td></tr>
+              <tr><td>MultiLoKo</td><td><span class="pill">World</span></td><td>5-shot</td><td class="num">38.7</td><td class="num">42.2</td><td class="num">51.1</td></tr>
+              <tr><td>Simple-QA verified</td><td><span class="pill">World</span></td><td>25-shot</td><td class="num">28.3</td><td class="num">30.1</td><td class="num">55.2</td></tr>
+              <tr><td>FACTS Parametric</td><td><span class="pill">World</span></td><td>25-shot</td><td class="num">27.1</td><td class="num">33.9</td><td class="num">62.6</td></tr>
+              <tr><td>BBH</td><td><span class="pill">Reason</span></td><td>3-shot</td><td class="num">87.6</td><td class="num">86.9</td><td class="num">87.5</td></tr>
+              <tr><td>DROP</td><td><span class="pill">Reason</span></td><td>1-shot</td><td class="num">88.2</td><td class="num">88.6</td><td class="num">88.7</td></tr>
+              <tr><td>HellaSwag</td><td><span class="pill">Reason</span></td><td>0-shot</td><td class="num">86.4</td><td class="num">85.7</td><td class="num">88.0</td></tr>
+              <tr><td>BigCodeBench</td><td><span class="pill">Code</span></td><td>3-shot</td><td class="num">63.9</td><td class="num">56.8</td><td class="num">59.2</td></tr>
+              <tr><td>HumanEval</td><td><span class="pill">Code</span></td><td>0-shot</td><td class="num">62.8</td><td class="num">69.5</td><td class="num">76.8</td></tr>
+              <tr><td>GSM8K</td><td><span class="pill">Math</span></td><td>8-shot</td><td class="num">91.1</td><td class="num">90.8</td><td class="num">92.6</td></tr>
+              <tr><td>MATH</td><td><span class="pill">Math</span></td><td>4-shot</td><td class="num">60.5</td><td class="num">57.4</td><td class="num">64.5</td></tr>
+              <tr><td>MGSM</td><td><span class="pill">Math</span></td><td>8-shot</td><td class="num">81.3</td><td class="num">85.7</td><td class="num">84.4</td></tr>
+              <tr><td>CMath</td><td><span class="pill">Math</span></td><td>3-shot</td><td class="num">92.6</td><td class="num">93.6</td><td class="num">90.9</td></tr>
+              <tr><td>LongBench-V2</td><td><span class="pill">Long</span></td><td>1-shot</td><td class="num">40.2</td><td class="num">44.7</td><td class="num">51.5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Table 7：不同推理模式完整摘录</h3>
+        <div class="table-controls" aria-label="评测类别过滤">
+          <button type="button" data-filter="all" aria-pressed="true">全部</button>
+          <button type="button" data-filter="kr" aria-pressed="false">知识/推理</button>
+          <button type="button" data-filter="long" aria-pressed="false">长上下文</button>
+          <button type="button" data-filter="agent" aria-pressed="false">Agent</button>
+        </div>
+        <div class="table-wrap" role="region" aria-label="Table 7 DeepSeek V4 modes" tabindex="0">
+          <table>
+            <thead>
+              <tr>
+                <th>Benchmark</th><th>类别</th><th class="num">Flash Non</th><th class="num">Flash High</th><th class="num">Flash Max</th><th class="num">Pro Non</th><th class="num">Pro High</th><th class="num">Pro Max</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-category="kr"><td>MMLU-Pro</td><td><span class="pill">K/R</span></td><td class="num">83.0</td><td class="num">86.4</td><td class="num">86.2</td><td class="num">82.9</td><td class="num">87.1</td><td class="num">87.5</td></tr>
+              <tr data-category="kr"><td>SimpleQA-Verified</td><td><span class="pill">K/R</span></td><td class="num">23.1</td><td class="num">28.9</td><td class="num">34.1</td><td class="num">45.0</td><td class="num">46.2</td><td class="num">57.9</td></tr>
+              <tr data-category="kr"><td>Chinese-SimpleQA</td><td><span class="pill">K/R</span></td><td class="num">71.5</td><td class="num">73.2</td><td class="num">78.9</td><td class="num">75.8</td><td class="num">77.7</td><td class="num">84.4</td></tr>
+              <tr data-category="kr"><td>GPQA Diamond</td><td><span class="pill">K/R</span></td><td class="num">71.2</td><td class="num">87.4</td><td class="num">88.1</td><td class="num">72.9</td><td class="num">89.1</td><td class="num">90.1</td></tr>
+              <tr data-category="kr"><td>HLE</td><td><span class="pill">K/R</span></td><td class="num">8.1</td><td class="num">29.4</td><td class="num">34.8</td><td class="num">7.7</td><td class="num">34.5</td><td class="num">37.7</td></tr>
+              <tr data-category="kr"><td>LiveCodeBench</td><td><span class="pill">Code</span></td><td class="num">55.2</td><td class="num">88.4</td><td class="num">91.6</td><td class="num">56.8</td><td class="num">89.8</td><td class="num">93.5</td></tr>
+              <tr data-category="kr"><td>Codeforces Rating</td><td><span class="pill">Code</span></td><td class="num">-</td><td class="num">2816</td><td class="num">3052</td><td class="num">-</td><td class="num">2919</td><td class="num">3206</td></tr>
+              <tr data-category="kr"><td>HMMT 2026 Feb</td><td><span class="pill">Math</span></td><td class="num">40.8</td><td class="num">91.9</td><td class="num">94.8</td><td class="num">31.7</td><td class="num">94.0</td><td class="num">95.2</td></tr>
+              <tr data-category="kr"><td>IMOAnswerBench</td><td><span class="pill">Math</span></td><td class="num">41.9</td><td class="num">85.1</td><td class="num">88.4</td><td class="num">35.3</td><td class="num">88.0</td><td class="num">89.8</td></tr>
+              <tr data-category="kr"><td>Apex</td><td><span class="pill">Math</span></td><td class="num">1.0</td><td class="num">19.1</td><td class="num">33.0</td><td class="num">0.4</td><td class="num">27.4</td><td class="num">38.3</td></tr>
+              <tr data-category="kr"><td>Apex Shortlist</td><td><span class="pill">Math</span></td><td class="num">9.3</td><td class="num">72.1</td><td class="num">85.7</td><td class="num">9.2</td><td class="num">85.5</td><td class="num">90.2</td></tr>
+              <tr data-category="long"><td>MRCR 1M</td><td><span class="pill">Long</span></td><td class="num">37.5</td><td class="num">76.9</td><td class="num">78.7</td><td class="num">44.7</td><td class="num">83.3</td><td class="num">83.5</td></tr>
+              <tr data-category="long"><td>CorpusQA 1M</td><td><span class="pill">Long</span></td><td class="num">15.5</td><td class="num">59.3</td><td class="num">60.5</td><td class="num">35.6</td><td class="num">56.5</td><td class="num">62.0</td></tr>
+              <tr data-category="agent"><td>Terminal Bench 2.0</td><td><span class="pill">Agent</span></td><td class="num">49.1</td><td class="num">56.6</td><td class="num">56.9</td><td class="num">59.1</td><td class="num">63.3</td><td class="num">67.9</td></tr>
+              <tr data-category="agent"><td>SWE Verified</td><td><span class="pill">Agent</span></td><td class="num">73.7</td><td class="num">78.6</td><td class="num">79.0</td><td class="num">73.6</td><td class="num">79.4</td><td class="num">80.6</td></tr>
+              <tr data-category="agent"><td>SWE Pro</td><td><span class="pill">Agent</span></td><td class="num">49.1</td><td class="num">52.3</td><td class="num">52.6</td><td class="num">52.1</td><td class="num">54.4</td><td class="num">55.4</td></tr>
+              <tr data-category="agent"><td>SWE Multilingual</td><td><span class="pill">Agent</span></td><td class="num">69.7</td><td class="num">70.2</td><td class="num">73.3</td><td class="num">69.8</td><td class="num">74.1</td><td class="num">76.2</td></tr>
+              <tr data-category="agent"><td>BrowseComp</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">53.5</td><td class="num">73.2</td><td class="num">-</td><td class="num">80.4</td><td class="num">83.4</td></tr>
+              <tr data-category="agent"><td>HLE w/ tools</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">40.3</td><td class="num">45.1</td><td class="num">-</td><td class="num">44.7</td><td class="num">48.2</td></tr>
+              <tr data-category="agent"><td>MCPAtlas Public</td><td><span class="pill">Agent</span></td><td class="num">64.0</td><td class="num">67.4</td><td class="num">69.0</td><td class="num">69.4</td><td class="num">74.2</td><td class="num">73.6</td></tr>
+              <tr data-category="agent"><td>GDPval-AA</td><td><span class="pill">Agent</span></td><td class="num">-</td><td class="num">-</td><td class="num">1395</td><td class="num">-</td><td class="num">-</td><td class="num">1554</td></tr>
+              <tr data-category="agent"><td>Toolathlon</td><td><span class="pill">Agent</span></td><td class="num">40.7</td><td class="num">43.5</td><td class="num">47.8</td><td class="num">46.3</td><td class="num">49.0</td><td class="num">51.8</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Table 6：DeepSeek-V4-Pro-Max 与外部模型对比</h3>
+        <p style="margin-bottom:.75rem;">这张表混合闭源与开源模型，且部分外部 API 有空缺项。读法上应关注类别趋势，不宜只盯单行第一名。</p>
+        <div class="table-wrap" role="region" aria-label="Table 6 external comparison" tabindex="0">
+          <table>
+            <thead>
+              <tr>
+                <th>Benchmark</th><th>类别</th><th class="num">Opus-4.6 Max</th><th class="num">GPT-5.4 xHigh</th><th class="num">Gemini-3.1 High</th><th class="num">K2.6 Thinking</th><th class="num">GLM-5.1 Thinking</th><th class="num">DS-V4-Pro Max</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>MMLU-Pro</td><td><span class="pill">K/R</span></td><td class="num">89.1</td><td class="num">87.5</td><td class="num">91.0</td><td class="num">87.1</td><td class="num">86.0</td><td class="num">87.5</td></tr>
+              <tr><td>SimpleQA-Verified</td><td><span class="pill">K/R</span></td><td class="num">46.2</td><td class="num">45.3</td><td class="num">75.6</td><td class="num">36.9</td><td class="num">38.1</td><td class="num">57.9</td></tr>
+              <tr><td>Chinese-SimpleQA</td><td><span class="pill">K/R</span></td><td class="num">76.4</td><td class="num">76.8</td><td class="num">85.9</td><td class="num">75.9</td><td class="num">75.0</td><td class="num">84.4</td></tr>
+              <tr><td>GPQA Diamond</td><td><span class="pill">K/R</span></td><td class="num">91.3</td><td class="num">93.0</td><td class="num">94.3</td><td class="num">90.5</td><td class="num">86.2</td><td class="num">90.1</td></tr>
+              <tr><td>HLE</td><td><span class="pill">K/R</span></td><td class="num">40.0</td><td class="num">39.8</td><td class="num">44.4</td><td class="num">36.4</td><td class="num">34.7</td><td class="num">37.7</td></tr>
+              <tr><td>LiveCodeBench</td><td><span class="pill">Code</span></td><td class="num">88.8</td><td class="num">-</td><td class="num">91.7</td><td class="num">89.6</td><td class="num">-</td><td class="num">93.5</td></tr>
+              <tr><td>Codeforces Rating</td><td><span class="pill">Code</span></td><td class="num">-</td><td class="num">3168</td><td class="num">3052</td><td class="num">-</td><td class="num">-</td><td class="num">3206</td></tr>
+              <tr><td>HMMT 2026 Feb</td><td><span class="pill">Math</span></td><td class="num">96.2</td><td class="num">97.7</td><td class="num">94.7</td><td class="num">92.7</td><td class="num">89.4</td><td class="num">95.2</td></tr>
+              <tr><td>IMOAnswerBench</td><td><span class="pill">Math</span></td><td class="num">75.3</td><td class="num">91.4</td><td class="num">81.0</td><td class="num">86.0</td><td class="num">83.8</td><td class="num">89.8</td></tr>
+              <tr><td>Apex</td><td><span class="pill">Math</span></td><td class="num">34.5</td><td class="num">54.1</td><td class="num">60.9</td><td class="num">24.0</td><td class="num">11.5</td><td class="num">38.3</td></tr>
+              <tr><td>Apex Shortlist</td><td><span class="pill">Math</span></td><td class="num">85.9</td><td class="num">78.1</td><td class="num">89.1</td><td class="num">75.5</td><td class="num">72.4</td><td class="num">90.2</td></tr>
+              <tr><td>MRCR 1M</td><td><span class="pill">Long</span></td><td class="num">92.9</td><td class="num">-</td><td class="num">76.3</td><td class="num">-</td><td class="num">-</td><td class="num">83.5</td></tr>
+              <tr><td>CorpusQA 1M</td><td><span class="pill">Long</span></td><td class="num">71.7</td><td class="num">-</td><td class="num">53.8</td><td class="num">-</td><td class="num">-</td><td class="num">62.0</td></tr>
+              <tr><td>Terminal Bench 2.0</td><td><span class="pill">Agent</span></td><td class="num">65.4</td><td class="num">75.1</td><td class="num">68.5</td><td class="num">66.7</td><td class="num">63.5</td><td class="num">67.9</td></tr>
+              <tr><td>SWE Verified</td><td><span class="pill">Agent</span></td><td class="num">80.8</td><td class="num">-</td><td class="num">80.6</td><td class="num">80.2</td><td class="num">-</td><td class="num">80.6</td></tr>
+              <tr><td>SWE Pro</td><td><span class="pill">Agent</span></td><td class="num">57.3</td><td class="num">57.7</td><td class="num">54.2</td><td class="num">58.6</td><td class="num">58.4</td><td class="num">55.4</td></tr>
+              <tr><td>SWE Multilingual</td><td><span class="pill">Agent</span></td><td class="num">77.5</td><td class="num">-</td><td class="num">-</td><td class="num">76.7</td><td class="num">73.3</td><td class="num">76.2</td></tr>
+              <tr><td>BrowseComp</td><td><span class="pill">Agent</span></td><td class="num">83.7</td><td class="num">82.7</td><td class="num">85.9</td><td class="num">83.2</td><td class="num">79.3</td><td class="num">83.4</td></tr>
+              <tr><td>HLE w/ tools</td><td><span class="pill">Agent</span></td><td class="num">53.1</td><td class="num">52.0</td><td class="num">51.6</td><td class="num">54.0</td><td class="num">50.4</td><td class="num">48.2</td></tr>
+              <tr><td>GDPval-AA Elo</td><td><span class="pill">Agent</span></td><td class="num">1619</td><td class="num">1674</td><td class="num">1314</td><td class="num">1482</td><td class="num">1535</td><td class="num">1554</td></tr>
+              <tr><td>MCPAtlas Public</td><td><span class="pill">Agent</span></td><td class="num">73.8</td><td class="num">67.2</td><td class="num">69.2</td><td class="num">66.6</td><td class="num">71.8</td><td class="num">73.6</td></tr>
+              <tr><td>Toolathlon</td><td><span class="pill">Agent</span></td><td class="num">47.2</td><td class="num">54.6</td><td class="num">48.8</td><td class="num">50.0</td><td class="num">40.7</td><td class="num">51.8</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 1rem;">
+        <article class="chart-card">
+          <h3>Agentic Search vs RAG</h3>
+          <div class="stack" aria-label="Agentic Search vs RAG win rates">
+            <div class="stack-row"><span class="stack-label">Easy objective</span><div class="stack-bar"><span class="seg win" style="width:56.1%">56.1</span><span class="seg tie" style="width:21.9%">21.9</span><span class="seg lose" style="width:21.9%">21.9</span></div></div>
+            <div class="stack-row"><span class="stack-label">Easy subjective</span><div class="stack-bar"><span class="seg win" style="width:61.7%">61.7</span><span class="seg tie" style="width:20.9%">20.9</span><span class="seg lose" style="width:17.4%">17.4</span></div></div>
+            <div class="stack-row"><span class="stack-label">Hard objective</span><div class="stack-bar"><span class="seg win" style="width:60.7%">60.7</span><span class="seg tie" style="width:19.6%">19.6</span><span class="seg lose" style="width:19.6%">19.6</span></div></div>
+            <div class="stack-row"><span class="stack-label">Hard subjective</span><div class="stack-bar"><span class="seg win" style="width:68.5%">68.5</span><span class="seg tie" style="width:16.8%">16.8</span><span class="seg lose" style="width:14.7%">14.7</span></div></div>
+            <div class="stack-row"><span class="stack-label">Total</span><div class="stack-bar"><span class="seg win" style="width:61.7%">61.7</span><span class="seg tie" style="width:20.0%">20.0</span><span class="seg lose" style="width:18.3%">18.3</span></div></div>
+          </div>
+          <div class="legend"><span><i style="background:#0f7d59"></i>Agent win</span><span><i style="background:#b98517"></i>Tie</span><span><i style="background:#be5438"></i>RAG win</span></div>
+          <p style="margin-top:.65rem;">成本均值：Agentic Search 16.2 次工具调用、13,649 prefill tokens、1,526 output tokens；RAG 为 10,453 / 1,308 tokens。</p>
+        </article>
+
+        <article class="chart-card">
+          <h3>真实任务：写作和办公任务</h3>
+          <div class="bars">
+            <div class="bar-row"><span>功能写作 DS win</span><div class="track"><div class="fill" style="--value:62.65%"></div></div><output>62.65%</output></div>
+            <div class="bar-row"><span>功能写作 Gemini win</span><div class="track"><div class="fill" style="--value:34.10%"></div></div><output>34.10%</output></div>
+            <div class="bar-row"><span>创作指令 DS win</span><div class="track"><div class="fill" style="--value:60.03%"></div></div><output>60.03%</output></div>
+            <div class="bar-row"><span>创作质量 DS win</span><div class="track"><div class="fill" style="--value:77.48%"></div></div><output>77.48%</output></div>
+            <div class="bar-row"><span>复杂写作 DS win</span><div class="track"><div class="fill" style="--value:45.9%"></div></div><output>45.9%</output></div>
+            <div class="bar-row"><span>复杂写作 Opus win</span><div class="track"><div class="fill" style="--value:52.0%"></div></div><output>52.0%</output></div>
+            <div class="bar-row"><span>白领任务 non-loss</span><div class="track"><div class="fill" style="--value:63%"></div></div><output>63%</output></div>
+            <div class="bar-row"><span>R&amp;D coding pass</span><div class="track"><div class="fill" style="--value:67%"></div></div><output>67%</output></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="grid-2" style="margin-top: 1rem;">
+        <article class="chart-card">
+          <h3>白领任务：四维人评分</h3>
+          <div class="bars">
+            <div class="bar-row"><span>Task Completion DS</span><div class="track"><div class="fill" style="--value:98.32%"></div></div><output>98.32</output></div>
+            <div class="bar-row"><span>Task Completion Opus</span><div class="track"><div class="fill" style="--value:96.68%"></div></div><output>96.68</output></div>
+            <div class="bar-row"><span>Instruction DS</span><div class="track"><div class="fill" style="--value:87.76%"></div></div><output>87.76</output></div>
+            <div class="bar-row"><span>Instruction Opus</span><div class="track"><div class="fill" style="--value:88.88%"></div></div><output>88.88</output></div>
+            <div class="bar-row"><span>Content Quality DS</span><div class="track"><div class="fill" style="--value:83.32%"></div></div><output>83.32</output></div>
+            <div class="bar-row"><span>Content Quality Opus</span><div class="track"><div class="fill" style="--value:78.00%"></div></div><output>78.00</output></div>
+            <div class="bar-row"><span>Formatting DS</span><div class="track"><div class="fill" style="--value:72.68%"></div></div><output>72.68</output></div>
+            <div class="bar-row"><span>Formatting Opus</span><div class="track"><div class="fill" style="--value:76.68%"></div></div><output>76.68</output></div>
+            <div class="bar-row"><span>Overall DS</span><div class="track"><div class="fill" style="--value:86.52%"></div></div><output>86.52</output></div>
+            <div class="bar-row"><span>Overall Opus</span><div class="track"><div class="fill" style="--value:84.06%"></div></div><output>84.06</output></div>
+          </div>
+          <p style="margin-top:.65rem;">DS 在任务完成和内容质量更强，Opus 在指令跟随与格式美观略优。</p>
+        </article>
+
+        <article class="chart-card">
+          <h3>R&amp;D Coding Benchmark pass rate</h3>
+          <div class="bars">
+            <div class="bar-row"><span>Haiku 4.5</span><div class="track"><div class="fill" style="--value:13%"></div></div><output>13%</output></div>
+            <div class="bar-row"><span>Sonnet 4.5</span><div class="track"><div class="fill" style="--value:47%"></div></div><output>47%</output></div>
+            <div class="bar-row"><span>DeepSeek V4 Pro Max</span><div class="track"><div class="fill" style="--value:67%"></div></div><output>67%</output></div>
+            <div class="bar-row"><span>Opus 4.5</span><div class="track"><div class="fill" style="--value:70%"></div></div><output>70%</output></div>
+            <div class="bar-row"><span>Opus 4.5 Thinking</span><div class="track"><div class="fill" style="--value:73%"></div></div><output>73%</output></div>
+            <div class="bar-row"><span>Opus 4.6 Thinking</span><div class="track"><div class="fill" style="--value:80%"></div></div><output>80%</output></div>
+          </div>
+          <p style="margin-top:.65rem;">该内部 R&amp;D 集合来自约 200 个候选任务，质量过滤后保留 30 个任务；因此更像定性强信号，而不是公开基准。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="limits" class="panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">7. Caveats</div>
+          <h2>限制与我会如何谨慎使用这些结论</h2>
+        </div>
+        <p>这份报告信息量很大，但仍是 preview 技术报告，不是第三方复现论文。下面这些点不该被省略。</p>
+      </div>
+      <div class="grid-3">
+        <article class="card">
+          <span class="kicker">Architecture risk</span>
+          <h3>结构非常复杂</h3>
+          <p>论文自己也承认，为追求极端长上下文效率保留了许多技巧，未来要把架构蒸馏得更优雅。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Stability</span>
+          <h3>稳定性技巧还缺理论解释</h3>
+          <p>Anticipatory Routing 和 SwiGLU Clamping 有效，但底层机制仍没有充分理论理解。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Evaluation</span>
+          <h3>很多评测是内部口径</h3>
+          <p>Table 1 是统一内部框架；Agent、搜索、白领任务、代码 Agent 等也大量依赖内部 harness 或人评。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Data</span>
+          <h3>数据配比没有公开</h3>
+          <p>报告给了数据类别和处理策略，但没有公开各类 token 占比、去重标准、污染检测细节和合成数据比例。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Serving</span>
+          <h3>真实成本取决于部署</h3>
+          <p>FLOPs/KV cache 比例下降不等于最终价格或延迟；硬件、kernel、缓存命中率、批处理和 API 定价都会影响体验。</p>
+        </article>
+        <article class="card">
+          <span class="kicker">Product</span>
+          <h3>训练格式不等于 API 承诺</h3>
+          <p>报告展示 think/tool schema 和 reasoning 模式，但最终开放接口如何暴露、是否展示 reasoning 内容，应以实际服务文档为准。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="sources">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Sources</div>
+          <h2>来源</h2>
+        </div>
+        <p>抓取日期：2026-06-11。本文按 PDF 内容组织；网页、模型仓库和 API 行为后续可能变化。</p>
+      </div>
+      <div class="source-list">
+        <article>
+          <code>S1</code>
+          <h3>DeepSeek_V4.pdf</h3>
+          <p><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/resolve/main/DeepSeek_V4.pdf">PDF 直接链接</a>。架构、公式、训练、评测和限制均来自此报告。</p>
+        </article>
+        <article>
+          <code>S2</code>
+          <h3>Hugging Face 文件页</h3>
+          <p><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf">文件页</a>。用于定位 PDF 所属仓库和文件。</p>
+        </article>
+        <article>
+          <code>S3</code>
+          <h3>DeepSeek V4 collection</h3>
+          <p><a href="https://huggingface.co/collections/deepseek-ai/deepseek-v4">模型集合页</a>。用于确认关联模型入口；技术细节仍以 PDF 为主。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>DeepSeek V4 Technical Deep Dive · single-file HTML · no external runtime dependencies.</p>
+    </div>
+  </footer>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll("[data-filter]"));
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-category]"));
+
+    function setFilter(filter) {
+      buttons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+      });
+      rows.forEach((row) => {
+        row.dataset.hidden = String(filter !== "all" && row.dataset.category !== filter);
+      });
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => setFilter(button.dataset.filter));
+    });
+  </script>
+</body>
+</html>
