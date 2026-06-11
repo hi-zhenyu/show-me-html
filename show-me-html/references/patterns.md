@@ -44,6 +44,28 @@ Use for status reports, incident reports, concept explainers, feature deep-dives
 - Separate "what happened", "why it matters", and "what changes next".
 - Avoid decorative charts; every visual must answer a question.
 
+## Document transformation
+
+Use when the user provides a document and asks for HTML. Treat the document as source material, not as a layout template.
+
+- Preserve the content contract: facts, evidence, formulas, terminology, caveats, and user-requested emphasis.
+- Change the presentation contract when it helps: reorder around reader questions, decisions, evidence, or workflows.
+- Start with the artifact's job, not the document's first heading.
+- Pull out latent structure: comparisons, timelines, taxonomies, processes, actors, inputs/outputs, assumptions, risks, and open questions.
+- Convert dense prose into diagrams, side notes, matrices, callouts, cards, filters, or navigation only when the structure becomes clearer.
+- Keep original-order navigation or an appendix when traceability matters.
+
+Common transformations:
+
+- Paper or technical report: answer-first summary, method map, architecture diagram, evidence panels, key formulas, limitations, and "why it matters".
+- Strategy or proposal: decision framing, option comparison, tradeoff lanes, milestones, owner/risk map, and go/no-go checks.
+- Tutorial or guide: stepper, prerequisites, runnable examples, expected output, pitfalls, and troubleshooting.
+- PRD or spec: user goals, flows, state map, requirement matrix, edge cases, and acceptance checks.
+- Data analysis: key finding dashboard, chart grid, source table, methodology notes, and uncertainty/caveats.
+- Long essay or memo: narrative spine, thesis map, glossary, side notes, counterarguments, and action takeaways.
+
+Avoid a styled transcript where each source heading becomes the same heading plus a card. That is markdown with decoration, not an HTML artifact.
+
 ## Diagrams and illustrations
 
 Use when structure is clearer as a drawing.

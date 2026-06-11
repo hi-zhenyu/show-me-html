@@ -7,6 +7,8 @@ description: Create self-contained HTML artifacts when a request benefits from s
 
 Use this skill when HTML will make the shape of the work clearer than markdown. The goal is not "always output HTML"; the goal is to choose HTML when layout, hierarchy, color, motion, diagrams, or interaction materially improve understanding or action.
 
+Treat source documents as raw material, not as the target structure. Preserve meaning, facts, evidence, formulas, and user intent, but redesign the presentation when another structure would make the content easier to understand.
+
 ## Decide the medium
 
 Reach for a self-contained `.html` artifact when any of these are true:
@@ -31,6 +33,7 @@ Before building, silently lock this brief:
 - Purpose: what job should the artifact do?
 - Audience: who will read or use it, and how much context do they have?
 - Content shape: comparison, timeline, report, review, diagram, deck, editor, prototype, or hybrid.
+- Representation strategy: what should move from linear text into comparison, timeline, diagram, map, cards, dashboard, glossary, deck, simulator, or tool?
 - Visual direction: the deliberate tone and one memorable design idea.
 - Interactions: what state changes, if any, must the reader control?
 - Chart strategy: for quantitative artifacts, whether ECharts is needed; if not, why a smaller SVG/CSS/table treatment is enough.
@@ -44,15 +47,16 @@ Every HTML artifact must:
 1. Be a single self-contained `.html` file unless the user explicitly asks otherwise.
 2. Work offline by default: inline CSS and JS; no required runtime server; avoid external assets unless the user provided them or they are clearly optional.
 3. Use real layout, not markdown wrapped in tags. Render comparisons as columns, flows as diagrams, timelines as timelines, diffs as diffs.
-4. Be readable within five seconds: title, short framing sentence, and clear primary structure above the fold.
-5. Use semantic HTML first: `main`, `section`, `article`, `nav`, `table`, `button`, `a`, `label`, and ordered headings before ARIA patches.
-6. Be responsive from phone to desktop with stable dimensions for fixed-format UI like boards, grids, slide canvases, charts, controls, and toolbars.
-7. Be keyboard usable: visible `:focus-visible`, sensible tab order, real buttons for actions, real links for navigation.
-8. Respect motion and comfort: honor `prefers-reduced-motion`, animate only purposeful moments, and avoid `transition: all`.
-9. Handle real content: long text, empty states, narrow screens, large numbers, loading, errors, and destructive actions.
-10. Export state for every interactive editor/tool. Without export, an editor is incomplete.
-11. For factual or evidence-heavy artifacts, keep source notes close to important claims, distinguish fact from inference when it matters, and surface conflicting, stale, skipped, or uncertain data.
-12. For data-heavy artifacts with benchmarks, multiple metrics, trend lines, rates, or comparison charts, default to ECharts per `math-and-data.md`. If using inline SVG/CSS/tables instead, state the reason in the final note and keep the underlying data inspectable.
+4. Do not mirror the source document's heading order unless the user asks for faithful conversion. If the HTML outline looks like the markdown outline with styling, rethink the artifact shape.
+5. Be readable within five seconds: title, short framing sentence, and clear primary structure above the fold.
+6. Use semantic HTML first: `main`, `section`, `article`, `nav`, `table`, `button`, `a`, `label`, and ordered headings before ARIA patches.
+7. Be responsive from phone to desktop with stable dimensions for fixed-format UI like boards, grids, slide canvases, charts, controls, and toolbars.
+8. Be keyboard usable: visible `:focus-visible`, sensible tab order, real buttons for actions, real links for navigation.
+9. Respect motion and comfort: honor `prefers-reduced-motion`, animate only purposeful moments, and avoid `transition: all`.
+10. Handle real content: long text, empty states, narrow screens, large numbers, loading, errors, and destructive actions.
+11. Export state for every interactive editor/tool. Without export, an editor is incomplete.
+12. For factual or evidence-heavy artifacts, keep source notes close to important claims, distinguish fact from inference when it matters, and surface conflicting, stale, skipped, or uncertain data.
+13. For data-heavy artifacts with benchmarks, multiple metrics, trend lines, rates, or comparison charts, default to ECharts per `math-and-data.md`. If using inline SVG/CSS/tables instead, state the reason in the final note and keep the underlying data inspectable.
 
 ## Reference selection
 
@@ -74,12 +78,13 @@ If the artifact includes formulas, equations, statistical claims, charts, plots,
 
 ## Build workflow
 
-1. Choose the artifact shape and visual direction from the brief.
-2. For quantitative artifacts, decide the chart strategy before implementation: ECharts by default for substantive data visualization; SVG/CSS/table only when the chart is genuinely tiny or a table is clearer.
-3. Sketch the layout around the content's structure, not around generic cards.
-4. Implement the full single-file HTML with inline CSS and JS.
-5. Add interactions only when they help the user understand, decide, or export.
-6. Run a self-review against `interface-quality.md`.
-7. Deliver the saved path or artifact, plus a concise note on what it contains and any deliberate chart-library deviations.
+1. Run a representation pass: identify the reader's job, content atoms, relationships, decisions, evidence, caveats, and latent visuals.
+2. Choose the artifact shape and visual direction from the representation pass, not from the source document order.
+3. For quantitative artifacts, decide the chart strategy before implementation: ECharts by default for substantive data visualization; SVG/CSS/table only when the chart is genuinely tiny or a table is clearer.
+4. Sketch the layout around the content's structure, not around generic cards.
+5. Implement the full single-file HTML with inline CSS and JS.
+6. Add interactions only when they help the user understand, decide, or export.
+7. Run a self-review against `interface-quality.md`.
+8. Deliver the saved path or artifact, plus a concise note on what it contains and any deliberate chart-library deviations.
 
 Bad-looking HTML is worse than good markdown. If the result looks like a generic template, restart the visual direction before shipping.
